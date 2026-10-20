@@ -1,8 +1,6 @@
 package com.example.ui.components
 
 import android.app.Activity
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -32,7 +30,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -70,14 +67,11 @@ fun GoogleDriveCloudBackupSection(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val signingInfo = remember(context) { GoogleDriveCloudBackupManager.extractApkSigningInfo(context) }
 
     var isCloudBusy by remember { mutableStateOf(false) }
     var busyMessage by remember { mutableStateOf("") }
     var statusBannerText by remember { mutableStateOf<String?>(null) }
     var isStatusError by remember { mutableStateOf(false) }
-    var showConsoleHelper by remember { mutableStateOf(false) }
-    var webClientIdInput by remember(customWebClientId) { mutableStateOf(customWebClientId) }
     var pendingCloudAction by remember { mutableStateOf(PendingCloudAction.NONE) }
     var pendingCloudRestoreData by remember { mutableStateOf<Pair<String, DriveBackupFileMetadata>?>(null) }
 
@@ -128,7 +122,6 @@ fun GoogleDriveCloudBackupSection(
                         isCloudBusy = false
                         isStatusError = true
                         statusBannerText = result.message
-                        if (result.isConsoleConfigError) showConsoleHelper = true
                     }
                 }
             }
@@ -157,7 +150,6 @@ fun GoogleDriveCloudBackupSection(
                         isCloudBusy = false
                         isStatusError = true
                         statusBannerText = result.message
-                        if (result.isConsoleConfigError) showConsoleHelper = true
                     }
                 }
             }
@@ -191,7 +183,6 @@ fun GoogleDriveCloudBackupSection(
                         isCloudBusy = false
                         isStatusError = true
                         statusBannerText = result.message
-                        if (result.isConsoleConfigError) showConsoleHelper = true
                     }
                 }
             }
@@ -217,9 +208,6 @@ fun GoogleDriveCloudBackupSection(
             pendingCloudAction = PendingCloudAction.NONE
             isStatusError = true
             statusBannerText = err.message ?: "تعذر إتمام تسجيل الدخول بحساب Google."
-            if (err is GoogleDriveCloudBackupManager.ApiExceptionWithDiagnostic && err.isConsoleSetupRequired) {
-                showConsoleHelper = true
-            }
         }
     }
 
@@ -232,7 +220,7 @@ fun GoogleDriveCloudBackupSection(
             try {
                 val signInIntent = GoogleDriveCloudBackupManager.prepareSignInIntent(
                     context = context,
-                    webClientId = webClientIdInput,
+                    webClientId = customWebClientId,
                     forceAccountChooser = true
                 )
                 isCloudBusy = false
@@ -474,7 +462,7 @@ fun GoogleDriveCloudBackupSection(
                         OutlinedButton(
                             onClick = {
                                 scope.launch {
-                                    GoogleDriveCloudBackupManager.signOutFromGoogle(context, webClientIdInput)
+                                    GoogleDriveCloudBackupManager.signOutFromGoogle(context, customWebClientId)
                                     viewModel.clearConnectedGoogleProfile()
                                     statusBannerText = "تم تسجيل الخروج من حساب Google."
                                     isStatusError = false
@@ -802,143 +790,6 @@ fun GoogleDriveCloudBackupSection(
                 }
             }
         }
-
-        // 5. بوابة بيانات تسجيل التطبيق في Google Cloud Console (SHA-1 & Package Name)
-        Surface(
-            color = Color(0xFFF8FAFC),
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.padding(11.dp)) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showConsoleHelper = !showConsoleHelper },
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.VerifiedUser,
-                            contentDescription = null,
-                            tint = Color(0xFF1E40AF),
-                            modifier = Modifier.size(17.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "بيانات ربط Google Cloud Console (SHA-1 & Package)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color(0xFF0F172A)
-                            )
-                            Text(
-                                text = "انسخ اسم الحزمة وبصمة SHA-1 بضغطة زر لتسجيل التطبيق في قوقل كنسل",
-                                fontSize = 9.sp,
-                                color = Color(0xFF475569)
-                            )
-                        }
-                    }
-                    Icon(
-                        imageVector = if (showConsoleHelper) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = null,
-                        tint = Color(0xFF475569)
-                    )
-                }
-
-                AnimatedVisibility(visible = showConsoleHelper) {
-                    Column(
-                        modifier = Modifier.padding(top = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        HorizontalDivider(color = Color(0xFFE2E8F0))
-
-                        CopyableCredentialRow(
-                            title = "Package Name (اسم الحزمة):",
-                            value = signingInfo.packageName,
-                            onCopy = { copyToClipboard(context, "Package Name", signingInfo.packageName) }
-                        )
-
-                        CopyableCredentialRow(
-                            title = "SHA-1 Certificate Fingerprint (بصمة التوقيع):",
-                            value = signingInfo.sha1,
-                            onCopy = { copyToClipboard(context, "SHA-1", signingInfo.sha1) }
-                        )
-
-                        CopyableCredentialRow(
-                            title = "SHA-256 Certificate Fingerprint:",
-                            value = signingInfo.sha256,
-                            onCopy = { copyToClipboard(context, "SHA-256", signingInfo.sha256) }
-                        )
-
-                        val isConfiguredViaSecrets = remember {
-                            try {
-                                com.example.BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank() &&
-                                com.example.BuildConfig.GOOGLE_WEB_CLIENT_ID.endsWith(".apps.googleusercontent.com")
-                            } catch (_: Throwable) { false }
-                        }
-
-                        if (isConfiguredViaSecrets) {
-                            Surface(
-                                color = Color(0xFFECFDF5),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CheckCircle,
-                                        contentDescription = null,
-                                        tint = Color(0xFF059669),
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = "تم ربط معرّف Web Client ID تلقائياً عبر الأسرار الآمنة (GitHub / .env) ✓",
-                                        fontSize = 10.sp,
-                                        color = Color(0xFF065F46),
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                }
-                            }
-                        }
-
-                        OutlinedTextField(
-                            value = webClientIdInput,
-                            onValueChange = {
-                                webClientIdInput = it
-                                viewModel.setCustomWebClientId(it)
-                            },
-                            label = { Text("Web Client ID (اختياري - ينتهي بـ apps.googleusercontent.com)", fontSize = 9.5.sp) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        Surface(
-                            color = Color(0xFFEFF6FF),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(
-                                text = "خطوات التفعيل في Google Cloud Console:\n" +
-                                    "1. من قسم (APIs & Services -> Library) فعّل خدمة (Google Drive API).\n" +
-                                    "2. من (OAuth consent screen) أضف النطاق (.../auth/drive.file).\n" +
-                                    "3. من (Credentials -> Create Credentials -> OAuth client ID) اختر (Android) والصق اسم الحزمة وبصمة SHA-1 أعلاه.",
-                                fontSize = 9.5.sp,
-                                color = Color(0xFF1E3A8A),
-                                lineHeight = 14.sp,
-                                modifier = Modifier.padding(8.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 
     pendingCloudRestoreData?.let { (backupJson, meta) ->
@@ -1090,57 +941,3 @@ fun GoogleLogoCanvasIcon(modifier: Modifier = Modifier) {
     }
 }
 
-@Composable
-private fun CopyableCredentialRow(
-    title: String,
-    value: String,
-    onCopy: () -> Unit
-) {
-    Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(9.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 9.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 9.5.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF64748B)
-                )
-                Text(
-                    text = value,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Black,
-                    fontFamily = FontFamily.Monospace,
-                    color = Color(0xFF0F172A),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            TextButton(
-                onClick = onCopy,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
-                modifier = Modifier.height(28.dp)
-            ) {
-                Icon(Icons.Default.ContentCopy, contentDescription = "نسخ", modifier = Modifier.size(13.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("نسخ", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold)
-            }
-        }
-    }
-}
-
-private fun copyToClipboard(context: Context, label: String, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
-    Toast.makeText(context, "تم نسخ $label إلى الحافظة ✓", Toast.LENGTH_SHORT).show()
-}

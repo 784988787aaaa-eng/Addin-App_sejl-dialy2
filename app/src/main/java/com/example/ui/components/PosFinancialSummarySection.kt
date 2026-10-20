@@ -5,7 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -15,18 +19,23 @@ import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.domain.LedgerCalculator
 import com.example.ui.CartItemUi
 import com.example.ui.SmartTradeViewModel
 import com.example.util.cleanNum
 
 /**
- * بطاقة عرض الأصناف المدرجة في الفاتورة الحالية (قابلة للطي مع تأكيد الحذف) + بطاقة الحسابات المالية المنظمة
+ * بطاقة عرض الأصناف المدرجة في الفاتورة الحالية (بمساحة مضبوطة لا تدفع الشاشة للأسفل + نافذة معاينة كاملة)
+ * مع بطاقة الحسابات المالية الموحدة والمنظمة
  */
 @Composable
 fun PosCurrentInvoiceItemsCard(
@@ -40,16 +49,17 @@ fun PosCurrentInvoiceItemsCard(
 ) {
     var pendingDeleteItem by remember { mutableStateOf<CartItemUi?>(null) }
     var isItemsExpanded by remember { mutableStateOf(true) }
+    var showFullItemsDialog by remember { mutableStateOf(false) }
 
     Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        color = PosUiTokens.CardSurface,
+        shape = PosUiTokens.CardShape,
+        border = BorderStroke(1.dp, PosUiTokens.CardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -60,107 +70,143 @@ fun PosCurrentInvoiceItemsCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text(
                         text = "الأصناف في الفاتورة (${effectiveItems.size})",
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Black,
-                        color = Color(0xFF0F172A)
+                        color = PosUiTokens.TextPrimary
                     )
                     Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                        color = PosUiTokens.SubtleSurface,
+                        shape = PosUiTokens.BadgeShape,
+                        border = BorderStroke(1.dp, PosUiTokens.CardBorder)
                     ) {
                         Text(
                             text = if (isItemsExpanded) "طي ▴" else "عرض ▾",
-                            color = Color(0xFF475569),
-                            fontSize = 9.sp,
+                            color = PosUiTokens.TextSecondary,
+                            fontSize = 8.5.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
                         )
+                    }
+                    if (effectiveItems.size > 2) {
+                        Surface(
+                            color = Color(0xFFEFF6FF),
+                            shape = PosUiTokens.BadgeShape,
+                            border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                            modifier = Modifier.clickable { showFullItemsDialog = true }
+                        ) {
+                            Text(
+                                text = "معاينة الكل ⤢",
+                                color = PosUiTokens.PrimaryBrand,
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                            )
+                        }
                     }
                 }
 
                 Surface(
-                    color = Color(0xFFECFDF5),
-                    shape = RoundedCornerShape(7.dp),
-                    border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                    color = PosUiTokens.PositiveSoftBg,
+                    shape = PosUiTokens.BadgeShape,
+                    border = BorderStroke(1.dp, PosUiTokens.PositiveSoftBorder)
                 ) {
                     Text(
                         text = "إجمالي الفاتورة: ${netInvoiceSubtotal.cleanNum()} $currency",
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
                         color = Color(0xFF065F46),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                     )
                 }
             }
 
             if (isItemsExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // تحديد أقصى ارتفاع لقائمة الأصناف المدمجة حتى لا تدفع البطاقة المالية خارج الشاشة عند كثرة الأصناف
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 58.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(3.5.dp)
+                ) {
                     effectiveItems.forEach { item ->
+                        InvoiceItemCompactRow(
+                            item = item,
+                            currency = currency,
+                            onRequestDelete = { pendingDeleteItem = item }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showFullItemsDialog) {
+        Dialog(onDismissRequest = { showFullItemsDialog = false }) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                Surface(
+                    color = PosUiTokens.CardSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, PosUiTokens.CardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
-                                .padding(horizontal = 9.dp, vertical = 5.dp),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(7.dp),
-                                modifier = Modifier.weight(1f)
+                            Text(
+                                text = "تفاصيل أصناف الفاتورة (${effectiveItems.size})",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                color = PosUiTokens.TextPrimary
+                            )
+                            Surface(
+                                color = PosUiTokens.PositiveSoftBg,
+                                shape = PosUiTokens.BadgeShape,
+                                border = BorderStroke(1.dp, PosUiTokens.PositiveSoftBorder)
                             ) {
                                 Text(
-                                    text = item.productName,
+                                    text = "${netInvoiceSubtotal.cleanNum()} $currency",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = Color(0xFF0F172A)
+                                    color = PosUiTokens.PositiveGreen,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
-                                Surface(
-                                    color = Color(0xFFECFDF5),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(0.5.dp, Color(0xFFA7F3D0))
-                                ) {
-                                    Text(
-                                        text = item.unitDisplay,
-                                        color = Color(0xFF047857),
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
                             }
+                        }
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Text(
-                                    text = "${item.total.cleanNum()} $currency",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF0F172A)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 320.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            effectiveItems.forEach { item ->
+                                InvoiceItemCompactRow(
+                                    item = item,
+                                    currency = currency,
+                                    onRequestDelete = { pendingDeleteItem = item }
                                 )
-                                Surface(
-                                    color = Color(0xFFFFF1F2),
-                                    shape = RoundedCornerShape(6.dp),
-                                    border = BorderStroke(0.5.dp, Color(0xFFFECDD3)),
-                                    modifier = Modifier.clickable { pendingDeleteItem = item }
-                                ) {
-                                    Text(
-                                        text = "✕",
-                                        color = Color(0xFFE11D48),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Black,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
                             }
+                        }
+
+                        Button(
+                            onClick = { showFullItemsDialog = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = PosUiTokens.PrimaryAction),
+                            shape = PosUiTokens.FieldShape,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("إغلاق المعاينة", fontWeight = FontWeight.Black, color = Color.White)
                         }
                     }
                 }
@@ -187,6 +233,79 @@ fun PosCurrentInvoiceItemsCard(
 }
 
 @Composable
+private fun InvoiceItemCompactRow(
+    item: CartItemUi,
+    currency: String,
+    onRequestDelete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(PosUiTokens.SubtleSurface, RoundedCornerShape(7.dp))
+            .border(1.dp, PosUiTokens.CardBorder, RoundedCornerShape(7.dp))
+            .padding(horizontal = 8.dp, vertical = 3.5.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            Text(
+                text = item.productName,
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Black,
+                color = PosUiTokens.TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Surface(
+                color = PosUiTokens.PositiveSoftBg,
+                shape = PosUiTokens.BadgeShape,
+                border = BorderStroke(0.5.dp, PosUiTokens.PositiveSoftBorder)
+            ) {
+                Text(
+                    text = item.unitDisplay,
+                    color = PosUiTokens.PositiveGreen,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                )
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "${item.total.cleanNum()} $currency",
+                fontSize = 10.5.sp,
+                fontWeight = FontWeight.Black,
+                color = PosUiTokens.TextPrimary,
+                maxLines = 1
+            )
+            Surface(
+                color = PosUiTokens.DangerSoftBg,
+                shape = PosUiTokens.BadgeShape,
+                border = BorderStroke(0.5.dp, PosUiTokens.DangerSoftBorder),
+                modifier = Modifier.clickable { onRequestDelete() }
+            ) {
+                Text(
+                    text = "✕",
+                    color = Color(0xFFE11D48),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun PosFinancialEntryAndPreviewCard(
     viewModel: SmartTradeViewModel,
     netInvoiceSubtotal: Double,
@@ -199,19 +318,27 @@ fun PosFinancialEntryAndPreviewCard(
     paidFocus: FocusRequester,
     prevDebtFocus: FocusRequester,
     focusManager: FocusManager,
-    onOpenCalculator: (CalculatorTarget) -> Unit
+    onOpenCalculator: (CalculatorTarget) -> Unit,
+    onFinancialFocusChanged: (Boolean) -> Unit = {}
 ) {
     var showExtraAdjustments by remember { mutableStateOf(true) }
+    var isPaidFocused by remember { mutableStateOf(false) }
+    var isDiscountFocused by remember { mutableStateOf(false) }
+    var isPrevDebtFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isPaidFocused, isDiscountFocused, isPrevDebtFocused) {
+        onFinancialFocusChanged(isPaidFocused || isDiscountFocused || isPrevDebtFocused)
+    }
 
     Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        color = PosUiTokens.CardSurface,
+        shape = PosUiTokens.CardShape,
+        border = BorderStroke(1.dp, PosUiTokens.CardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             // 1. شريط ملخص الفاتورة الموحد والهادئ (إجمالي الفاتورة | مسلم في الكشف | المتبقي)
             val paidDisplayPreview = remember(paidVal, prevDebtVal) {
@@ -220,37 +347,36 @@ fun PosFinancialEntryAndPreviewCard(
             val hasRem = remaining > 0.0
 
             Surface(
-                color = Color(0xFFF8FAFC),
-                shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                color = PosUiTokens.SubtleSurface,
+                shape = RoundedCornerShape(8.dp),
+                border = BorderStroke(1.dp, PosUiTokens.CardBorder),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(IntrinsicSize.Min)
-                        .padding(vertical = 7.dp),
+                        .padding(vertical = 4.5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 6.dp),
+                            .padding(horizontal = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = "إجمالي الفاتورة",
-                            fontSize = 9.5.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF64748B),
+                            color = PosUiTokens.TextMuted,
                             maxLines = 1
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = netInvoiceSubtotal.cleanNum(),
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFF0F172A),
+                            color = PosUiTokens.TextPrimary,
                             maxLines = 1
                         )
                     }
@@ -259,29 +385,30 @@ fun PosFinancialEntryAndPreviewCard(
                         modifier = Modifier
                             .fillMaxHeight()
                             .width(1.dp)
-                            .background(Color(0xFFE2E8F0))
+                            .background(PosUiTokens.DividerColor)
                     )
 
                     Column(
                         modifier = Modifier
                             .weight(1.25f)
-                            .padding(horizontal = 6.dp),
+                            .padding(horizontal = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = "مسلم (في الكشف)",
-                            fontSize = 9.5.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF047857),
+                            color = PosUiTokens.PositiveGreen,
                             maxLines = 1
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = paidDisplayPreview,
-                            fontSize = 11.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Black,
-                            color = Color(0xFF047857),
-                            textAlign = TextAlign.Center
+                            color = PosUiTokens.PositiveGreen,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
 
@@ -289,28 +416,27 @@ fun PosFinancialEntryAndPreviewCard(
                         modifier = Modifier
                             .fillMaxHeight()
                             .width(1.dp)
-                            .background(Color(0xFFE2E8F0))
+                            .background(PosUiTokens.DividerColor)
                     )
 
                     Column(
                         modifier = Modifier
                             .weight(1f)
-                            .padding(horizontal = 6.dp),
+                            .padding(horizontal = 4.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
                             text = "المتبقي (الفاتورة)",
-                            fontSize = 9.5.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (hasRem) Color(0xFFB45309) else Color(0xFF64748B),
+                            color = if (hasRem) PosUiTokens.WarningAmber else PosUiTokens.TextMuted,
                             maxLines = 1
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = remaining.cleanNum(),
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Black,
-                            color = if (hasRem) Color(0xFFDC2626) else Color(0xFF1E3A8A),
+                            color = if (hasRem) PosUiTokens.DangerRed else PosUiTokens.PrimaryBrand,
                             maxLines = 1
                         )
                     }
@@ -326,14 +452,14 @@ fun PosFinancialEntryAndPreviewCard(
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.5.dp)
             ) {
                 PaymentModelChip(
-                    title = "💵 مسلم نقداً بالكامل",
+                    title = "نقد كامل",
                     selected = isCashFull,
-                    activeBg = Color(0xFF0D9488),
+                    activeBg = PosUiTokens.PositiveGreen,
                     modifier = Modifier
-                        .weight(1.1f)
+                        .weight(1f)
                         .testTag("payment_chip_cash_full"),
                     onClick = {
                         selectedPaymentOption = 0
@@ -341,11 +467,11 @@ fun PosFinancialEntryAndPreviewCard(
                     }
                 )
                 PaymentModelChip(
-                    title = "🌗 مسلم جزء / آجل",
+                    title = "مسلم جزء / آجل",
                     selected = isPartial,
                     activeBg = Color(0xFF2563EB),
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(1.15f)
                         .testTag("payment_chip_partial"),
                     onClick = {
                         selectedPaymentOption = 1
@@ -353,11 +479,11 @@ fun PosFinancialEntryAndPreviewCard(
                     }
                 )
                 PaymentModelChip(
-                    title = "📌 سداد دين سابق",
+                    title = "سداد دين سابق",
                     selected = hasPrevDebtNote,
                     activeBg = Color(0xFFD97706),
                     modifier = Modifier
-                        .weight(1.05f)
+                        .weight(1.1f)
                         .testTag("payment_chip_prev_debt"),
                     onClick = {
                         selectedPaymentOption = 2
@@ -367,18 +493,39 @@ fun PosFinancialEntryAndPreviewCard(
                 )
             }
 
-            // 3. الحقل الأساسي: المسلّم نقداً للفاتورة (واضح وبمساحة كاملة مريحة)
+            // 3. الحقل الأساسي: المسلّم نقداً للفاتورة مع مفتاح طي/عرض الحقول الإضافية في نفس السطر لتوفير الارتفاع
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                Text(
-                    text = "مسلّم نقداً (للفاتورة)",
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF065F46),
-                    maxLines = 1
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "مسلّم نقداً (للفاتورة)",
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF065F46),
+                        maxLines = 1
+                    )
+                    Surface(
+                        color = PosUiTokens.SubtleSurface,
+                        shape = PosUiTokens.BadgeShape,
+                        border = BorderStroke(1.dp, PosUiTokens.CardBorder),
+                        modifier = Modifier.clickable { showExtraAdjustments = !showExtraAdjustments }
+                    ) {
+                        Text(
+                            text = if (showExtraAdjustments) "خيارات إضافية (الخصم وسداد دين سابق) ▴" else "خيارات إضافية (الخصم وسداد دين سابق) ▾",
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PosUiTokens.TextSecondary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                        )
+                    }
+                }
+
                 CompactInlineFieldWithCalc(
                     value = paidInput,
                     onValueChange = {
@@ -391,6 +538,7 @@ fun PosFinancialEntryAndPreviewCard(
                         onOpenCalculator(CalculatorTarget.PAID)
                     },
                     onImeDone = { focusManager.clearFocus() },
+                    onFocusStateChanged = { isPaidFocused = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .focusRequester(paidFocus)
@@ -398,100 +546,68 @@ fun PosFinancialEntryAndPreviewCard(
                 )
             }
 
-            // 4. قسم قابل للطي لتجميع الحقول الإضافية (الخصم + سداد دين سابق) لمنع الازدحام
-            Surface(
-                color = Color(0xFFF8FAFC),
-                shape = RoundedCornerShape(10.dp),
-                border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+            // 4. صف الحقول الإضافية (الخصم + سداد دين سابق) مباشرة بدون إطار داخلي مزدوج لمنع التكدس الرأسي
+            if (showExtraAdjustments) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showExtraAdjustments = !showExtraAdjustments },
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.weight(0.95f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
-                            text = "خيارات إضافية (الخصم وسداد دين سابق)",
-                            fontSize = 10.sp,
+                            text = "خصم",
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF475569)
+                            color = PosUiTokens.TextSecondary,
+                            maxLines = 1
                         )
-                        Text(
-                            text = if (showExtraAdjustments) "طي ▴" else "عرض ▾",
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF64748B)
+                        CompactInlineFieldWithCalc(
+                            value = discountInput,
+                            onValueChange = { viewModel.setDiscountInput(it) },
+                            placeholder = "مبلغ الخصم",
+                            onOpenCalc = { onOpenCalculator(CalculatorTarget.DISCOUNT) },
+                            onImeDone = { paidFocus.requestFocus() },
+                            onFocusStateChanged = { isDiscountFocused = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("discount_input")
                         )
                     }
 
-                    if (showExtraAdjustments) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.weight(1f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "خصم",
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF475569),
-                                    maxLines = 1
-                                )
-                                CompactInlineFieldWithCalc(
-                                    value = discountInput,
-                                    onValueChange = { viewModel.setDiscountInput(it) },
-                                    placeholder = "مبلغ الخصم",
-                                    onOpenCalc = { onOpenCalculator(CalculatorTarget.DISCOUNT) },
-                                    onImeDone = { paidFocus.requestFocus() },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .testTag("discount_input")
-                                )
-                            }
-
-                            Column(
-                                modifier = Modifier.weight(1.15f),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = "سداد دين سابق",
-                                    fontSize = 9.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF475569),
-                                    maxLines = 1
-                                )
-                                CompactInlineFieldWithCalc(
-                                    value = previousDebtInput,
-                                    onValueChange = {
-                                        selectedPaymentOption = 2
-                                        viewModel.setPreviousDebtInput(it)
-                                    },
-                                    placeholder = "مبلغ سداد دين سابق",
-                                    onOpenCalc = {
-                                        selectedPaymentOption = 2
-                                        onOpenCalculator(CalculatorTarget.PREV_DEBT)
-                                    },
-                                    onImeDone = { focusManager.clearFocus() },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .focusRequester(prevDebtFocus)
-                                        .testTag("previous_debt_input")
-                                )
-                            }
-                        }
+                    Column(
+                        modifier = Modifier.weight(1.15f),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    ) {
+                        Text(
+                            text = "سداد دين سابق",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PosUiTokens.TextSecondary,
+                            maxLines = 1
+                        )
+                        CompactInlineFieldWithCalc(
+                            value = previousDebtInput,
+                            onValueChange = {
+                                selectedPaymentOption = 2
+                                viewModel.setPreviousDebtInput(it)
+                            },
+                            placeholder = "مبلغ سداد دين سابق",
+                            onOpenCalc = {
+                                selectedPaymentOption = 2
+                                onOpenCalculator(CalculatorTarget.PREV_DEBT)
+                            },
+                            onImeDone = { focusManager.clearFocus() },
+                            onFocusStateChanged = { isPrevDebtFocused = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(prevDebtFocus)
+                                .testTag("previous_debt_input")
+                        )
                     }
                 }
             }
         }
     }
 }
-

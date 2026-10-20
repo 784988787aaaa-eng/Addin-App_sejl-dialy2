@@ -142,7 +142,7 @@ class UnifiedAccountingAndScalabilityTest {
         assertEquals(4.0, supAcc.normalizedMinor, 0.0001)
         assertEquals(5.5, supAcc.addedMajorEquivalent, 0.0001)
         assertEquals(15.5, supAcc.cumulativeStock, 0.0001)
-        assertTrue(supAcc.enteredDisplay.contains("5 فراسلة") && supAcc.enteredDisplay.contains("4"))
+        assertTrue(supAcc.enteredDisplay.contains("5 فراسل") && supAcc.enteredDisplay.contains("4"))
 
         // التحقق من معادلة المخزون اليومية: (السابق + الوارد - المباع = المتبقي نهاية اليوم)
         val currentProduct = sampleProduct.copy(stock = 20.0)

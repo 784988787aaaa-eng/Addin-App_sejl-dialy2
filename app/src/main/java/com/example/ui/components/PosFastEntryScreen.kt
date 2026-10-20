@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -14,7 +13,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
@@ -33,7 +31,8 @@ import com.example.ui.SmartTradeViewModel
 import com.example.util.rememberContactPickerLauncher
 
 /**
- * شاشة فاتورة البيع السريعة والمنظمة (تجمع مكونات العميل والأصناف والكميات والحسابات في هيكل رشيق)
+ * شاشة نقطة البيع السريعة والمهيأة هندسياً للعرض المتكامل بدون تمرير رأسي في الوضع القياسي،
+ * مع استجابة ذكية لحجم الشاشة ولوحة المفاتيح وتسلسل انتقال التركيز.
  */
 @Composable
 fun PosFastEntryScreen(
@@ -63,6 +62,8 @@ fun PosFastEntryScreen(
     val unitPriceFocus = remember { FocusRequester() }
     val prevDebtFocus = remember { FocusRequester() }
     val paidFocus = remember { FocusRequester() }
+
+    var isFinancialFieldFocused by remember { mutableStateOf(false) }
 
     val customerPhoneInput by viewModel.customerPhoneInput.collectAsStateWithLifecycle()
     val launchCustomerContactPicker = rememberContactPickerLauncher { picked ->
@@ -106,93 +107,208 @@ fun PosFastEntryScreen(
         else customers.filter { it.name.contains(q, ignoreCase = true) && !it.name.equals(q, ignoreCase = true) }.take(6)
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(7.dp)
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize()
     ) {
-        // 1. بطاقة اسم العميل المباشر والتاريخ والوقت (مع الدخول لجهات الاتصال بالضغط على الأيقونة وقائمة العملاء القابلة للطي)
-        PosCustomerInlineCard(
-            customerNameInput = customerNameInput,
-            hasAttachedPhone = customerPhoneInput.isNotBlank(),
-            dayName = dayName,
-            dateStr = dateStr,
-            time12h = time12h,
-            customerSuggestions = customerSuggestions,
-            onCustomerNameChange = { viewModel.setCustomerNameInput(it) },
-            onPickFromContacts = launchCustomerContactPicker,
-            onSelectCustomerSuggestion = { cust ->
-                viewModel.selectCustomerSuggestion(cust)
-                majorQtyFocus.requestFocus()
-            },
-            onNextFocus = { majorQtyFocus.requestFocus() }
-        )
+        val isWideLayout = maxWidth >= 640.dp
+        val isCompactKeyboardViewport = maxHeight < 470.dp
 
-        // 2. شبكة الأصناف الرشيقة والمنظمة
-        PosCommoditySelectionCard(
-            products = products,
-            selectedProduct = selectedProduct,
-            effectiveItems = effectiveItems,
-            onSelectProduct = { prod ->
-                viewModel.selectProduct(prod)
-                majorQtyFocus.requestFocus()
-            },
-            onDeleteProduct = { prod ->
-                viewModel.deleteProduct(context, prod)
-            },
-            onOpenEditProducts = onOpenEditProducts
-        )
+        if (isWideLayout) {
+            // تخطيط اللوحي والشاشات العريضة: قسم الإدخال والأصناف يميناً + قسم مراجعة الفاتورة والحسابات يساراً
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1.15f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    PosCustomerInlineCard(
+                        customerNameInput = customerNameInput,
+                        hasAttachedPhone = customerPhoneInput.isNotBlank(),
+                        dayName = dayName,
+                        dateStr = dateStr,
+                        time12h = time12h,
+                        customerSuggestions = customerSuggestions,
+                        onCustomerNameChange = { viewModel.setCustomerNameInput(it) },
+                        onPickFromContacts = launchCustomerContactPicker,
+                        onSelectCustomerSuggestion = { cust ->
+                            viewModel.selectCustomerSuggestion(cust)
+                            majorQtyFocus.requestFocus()
+                        },
+                        onNextFocus = { majorQtyFocus.requestFocus() }
+                    )
 
-        // 3. بطاقة إدخال الكمية المباشر بالوحدة الكبرى والصغرى
-        if (selectedProduct != null) {
-            PosDirectQuantityEntryCard(
-                viewModel = viewModel,
-                selectedProduct = selectedProduct,
-                majorQtyInput = majorQtyInput,
-                minorQtyInput = minorQtyInput,
-                unitPriceInput = unitPriceInput,
-                showPriceField = showPriceField,
-                onRequestEditSavedPrice = { isEditingSavedPrice = true },
-                onFinishEditSavedPrice = { isEditingSavedPrice = false },
-                majorQtyFocus = majorQtyFocus,
-                minorQtyFocus = minorQtyFocus,
-                unitPriceFocus = unitPriceFocus,
-                paidFocus = paidFocus,
-                onOpenEditProducts = onOpenEditProducts,
-                onOpenCalculator = onOpenCalculator
-            )
+                    PosCommoditySelectionCard(
+                        products = products,
+                        selectedProduct = selectedProduct,
+                        effectiveItems = effectiveItems,
+                        autoCollapseForKeyboard = false,
+                        onSelectProduct = { prod ->
+                            viewModel.selectProduct(prod)
+                            majorQtyFocus.requestFocus()
+                        },
+                        onDeleteProduct = { prod ->
+                            viewModel.deleteProduct(context, prod)
+                        },
+                        onOpenEditProducts = onOpenEditProducts
+                    )
+
+                    if (selectedProduct != null) {
+                        PosDirectQuantityEntryCard(
+                            viewModel = viewModel,
+                            selectedProduct = selectedProduct,
+                            majorQtyInput = majorQtyInput,
+                            minorQtyInput = minorQtyInput,
+                            unitPriceInput = unitPriceInput,
+                            showPriceField = showPriceField,
+                            onRequestEditSavedPrice = { isEditingSavedPrice = true },
+                            onFinishEditSavedPrice = { isEditingSavedPrice = false },
+                            majorQtyFocus = majorQtyFocus,
+                            minorQtyFocus = minorQtyFocus,
+                            unitPriceFocus = unitPriceFocus,
+                            paidFocus = paidFocus,
+                            onOpenEditProducts = onOpenEditProducts,
+                            onOpenCalculator = onOpenCalculator
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(0.95f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    if (effectiveItems.isNotEmpty()) {
+                        PosCurrentInvoiceItemsCard(
+                            effectiveItems = effectiveItems,
+                            netInvoiceSubtotal = netInvoiceSubtotal,
+                            currency = currency,
+                            selectedProductKey = selectedProductKey,
+                            majorQtyInput = majorQtyInput,
+                            minorQtyInput = minorQtyInput,
+                            viewModel = viewModel
+                        )
+                    }
+
+                    PosFinancialEntryAndPreviewCard(
+                        viewModel = viewModel,
+                        netInvoiceSubtotal = netInvoiceSubtotal,
+                        paidInput = paidInput,
+                        discountInput = discountInput,
+                        previousDebtInput = previousDebtInput,
+                        paidVal = paidVal,
+                        prevDebtVal = prevDebtVal,
+                        remaining = remaining,
+                        paidFocus = paidFocus,
+                        prevDebtFocus = prevDebtFocus,
+                        focusManager = focusManager,
+                        onOpenCalculator = onOpenCalculator,
+                        onFinancialFocusChanged = { isFinancialFieldFocused = it }
+                    )
+                }
+            }
+        } else {
+            // التخطيط القياسي للهواتف: مضغوط ومدروس ليحتوي جميع المناطق الوظيفية بدون تمرير رأسي في الوضع الطبيعي
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 7.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.5.dp)
+            ) {
+                // 1. منطقة بيانات العميل والتاريخ والوقت (مدمجة مع طي تلقائي للاقتراحات)
+                PosCustomerInlineCard(
+                    customerNameInput = customerNameInput,
+                    hasAttachedPhone = customerPhoneInput.isNotBlank(),
+                    dayName = dayName,
+                    dateStr = dateStr,
+                    time12h = time12h,
+                    customerSuggestions = customerSuggestions,
+                    onCustomerNameChange = { viewModel.setCustomerNameInput(it) },
+                    onPickFromContacts = launchCustomerContactPicker,
+                    onSelectCustomerSuggestion = { cust ->
+                        viewModel.selectCustomerSuggestion(cust)
+                        majorQtyFocus.requestFocus()
+                    },
+                    onNextFocus = { majorQtyFocus.requestFocus() }
+                )
+
+                // 2. منطقة شبكة الأصناف الرشيقة (تطوى تلقائياً عند فتح لوحة المفاتيح على الحقول المالية في الشاشات القصيرة)
+                PosCommoditySelectionCard(
+                    products = products,
+                    selectedProduct = selectedProduct,
+                    effectiveItems = effectiveItems,
+                    autoCollapseForKeyboard = isCompactKeyboardViewport && isFinancialFieldFocused,
+                    onSelectProduct = { prod ->
+                        viewModel.selectProduct(prod)
+                        majorQtyFocus.requestFocus()
+                    },
+                    onDeleteProduct = { prod ->
+                        viewModel.deleteProduct(context, prod)
+                    },
+                    onOpenEditProducts = onOpenEditProducts
+                )
+
+                // 3. منطقة إدخال الكمية المباشر بالوحدة الكبرى والصغرى والسعر
+                if (selectedProduct != null) {
+                    PosDirectQuantityEntryCard(
+                        viewModel = viewModel,
+                        selectedProduct = selectedProduct,
+                        majorQtyInput = majorQtyInput,
+                        minorQtyInput = minorQtyInput,
+                        unitPriceInput = unitPriceInput,
+                        showPriceField = showPriceField,
+                        onRequestEditSavedPrice = { isEditingSavedPrice = true },
+                        onFinishEditSavedPrice = { isEditingSavedPrice = false },
+                        majorQtyFocus = majorQtyFocus,
+                        minorQtyFocus = minorQtyFocus,
+                        unitPriceFocus = unitPriceFocus,
+                        paidFocus = paidFocus,
+                        onOpenEditProducts = onOpenEditProducts,
+                        onOpenCalculator = onOpenCalculator
+                    )
+                }
+
+                // 4. منطقة مراجعة أصناف الفاتورة الحالية (محددة الارتفاع مع نافذة معاينة كاملة لمنع تمدد الشاشة)
+                if (effectiveItems.isNotEmpty()) {
+                    PosCurrentInvoiceItemsCard(
+                        effectiveItems = effectiveItems,
+                        netInvoiceSubtotal = netInvoiceSubtotal,
+                        currency = currency,
+                        selectedProductKey = selectedProductKey,
+                        majorQtyInput = majorQtyInput,
+                        minorQtyInput = minorQtyInput,
+                        viewModel = viewModel
+                    )
+                }
+
+                // 5. منطقة الملخص المالي وإدخال الدفعات والخصم
+                PosFinancialEntryAndPreviewCard(
+                    viewModel = viewModel,
+                    netInvoiceSubtotal = netInvoiceSubtotal,
+                    paidInput = paidInput,
+                    discountInput = discountInput,
+                    previousDebtInput = previousDebtInput,
+                    paidVal = paidVal,
+                    prevDebtVal = prevDebtVal,
+                    remaining = remaining,
+                    paidFocus = paidFocus,
+                    prevDebtFocus = prevDebtFocus,
+                    focusManager = focusManager,
+                    onOpenCalculator = onOpenCalculator,
+                    onFinancialFocusChanged = { isFinancialFieldFocused = it }
+                )
+            }
         }
-
-        // 4. قائمة الأصناف الفعالة في الفاتورة الحالية (قابلة للطي)
-        if (effectiveItems.isNotEmpty()) {
-            PosCurrentInvoiceItemsCard(
-                effectiveItems = effectiveItems,
-                netInvoiceSubtotal = netInvoiceSubtotal,
-                currency = currency,
-                selectedProductKey = selectedProductKey,
-                majorQtyInput = majorQtyInput,
-                minorQtyInput = minorQtyInput,
-                viewModel = viewModel
-            )
-        }
-
-        // 5. الحسابات المالية المبسطة والمنظمة
-        PosFinancialEntryAndPreviewCard(
-            viewModel = viewModel,
-            netInvoiceSubtotal = netInvoiceSubtotal,
-            paidInput = paidInput,
-            discountInput = discountInput,
-            previousDebtInput = previousDebtInput,
-            paidVal = paidVal,
-            prevDebtVal = prevDebtVal,
-            remaining = remaining,
-            paidFocus = paidFocus,
-            prevDebtFocus = prevDebtFocus,
-            focusManager = focusManager,
-            onOpenCalculator = onOpenCalculator
-        )
     }
 }
 
@@ -209,17 +325,22 @@ private fun PosCustomerInlineCard(
     onSelectCustomerSuggestion: (CustomerEntity) -> Unit,
     onNextFocus: () -> Unit
 ) {
-    var showSuggestions by remember { mutableStateOf(true) }
+    // مطوية افتراضياً لتوفير المساحة الرأسية، وتفتح عند رغبة المستخدم أو أثناء البحث المباشر
+    var showSuggestions by remember { mutableStateOf(false) }
+    var isCustomerFocused by remember { mutableStateOf(false) }
+
+    val shouldDisplaySuggestions = customerSuggestions.isNotEmpty() &&
+        (showSuggestions || (isCustomerFocused && customerNameInput.isNotBlank()))
 
     Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        color = PosUiTokens.CardSurface,
+        shape = PosUiTokens.CardShape,
+        border = BorderStroke(1.dp, PosUiTokens.CardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -228,45 +349,63 @@ private fun PosCustomerInlineCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     Text(
                         text = "بيانات العميل",
-                        color = Color(0xFF1E293B),
-                        fontSize = 11.sp,
+                        color = PosUiTokens.TextPrimary,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Black
                     )
+                    if (hasAttachedPhone) {
+                        Surface(
+                            color = PosUiTokens.PositiveSoftBg,
+                            shape = PosUiTokens.BadgeShape,
+                            border = BorderStroke(0.8.dp, PosUiTokens.PositiveSoftBorder)
+                        ) {
+                            Text(
+                                text = "✓ مرتبط برقم",
+                                color = PosUiTokens.PositiveGreen,
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                     if (customerSuggestions.isNotEmpty()) {
                         Surface(
-                            color = Color(0xFFF8FAFC),
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            color = if (shouldDisplaySuggestions) PosUiTokens.PositiveSoftBg else PosUiTokens.SubtleSurface,
+                            shape = PosUiTokens.BadgeShape,
+                            border = BorderStroke(
+                                1.dp,
+                                if (shouldDisplaySuggestions) PosUiTokens.PositiveSoftBorder else PosUiTokens.CardBorder
+                            ),
                             modifier = Modifier.clickable { showSuggestions = !showSuggestions }
                         ) {
                             Text(
-                                text = if (showSuggestions) "العملاء (${customerSuggestions.size}) ▴" else "العملاء (${customerSuggestions.size}) ▾",
-                                color = Color(0xFF475569),
-                                fontSize = 9.5.sp,
+                                text = if (shouldDisplaySuggestions) "العملاء (${customerSuggestions.size}) ▴" else "العملاء (${customerSuggestions.size}) ▾",
+                                color = if (shouldDisplaySuggestions) PosUiTokens.PositiveGreen else PosUiTokens.TextSecondary,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
                             )
                         }
                     }
                 }
 
                 Surface(
-                    color = Color(0xFFF8FAFC),
-                    shape = RoundedCornerShape(7.dp),
-                    border = BorderStroke(1.dp, Color(0xFFE2E8F0))
+                    color = PosUiTokens.SubtleSurface,
+                    shape = PosUiTokens.BadgeShape,
+                    border = BorderStroke(1.dp, PosUiTokens.CardBorder)
                 ) {
                     Text(
                         text = "$dayName $dateStr • $time12h",
-                        color = Color(0xFF475569),
-                        fontSize = 9.5.sp,
+                        color = PosUiTokens.TextSecondary,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         softWrap = false,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
@@ -280,32 +419,39 @@ private fun PosCustomerInlineCard(
                 hasAttachedPhone = hasAttachedPhone,
                 keyboardType = KeyboardType.Text,
                 imeAction = ImeAction.Next,
-                onImeAction = onNextFocus,
+                onImeAction = {
+                    showSuggestions = false
+                    onNextFocus()
+                },
+                onFocusStateChanged = { focused -> isCustomerFocused = focused },
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("customer_name_input")
             )
 
-            if (customerSuggestions.isNotEmpty() && (showSuggestions || customerNameInput.isNotBlank())) {
+            if (shouldDisplaySuggestions) {
                 LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     items(customerSuggestions, key = { it.name }) { cust ->
                         Surface(
-                            color = Color(0xFFF8FAFC),
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                            modifier = Modifier.clickable { onSelectCustomerSuggestion(cust) }
+                            color = PosUiTokens.SubtleSurface,
+                            shape = PosUiTokens.ChipShape,
+                            border = BorderStroke(1.dp, PosUiTokens.InputBorderIdle),
+                            modifier = Modifier.clickable {
+                                showSuggestions = false
+                                onSelectCustomerSuggestion(cust)
+                            }
                         ) {
                             Text(
                                 text = cust.name,
-                                color = Color(0xFF1E3A8A),
-                                fontSize = 10.5.sp,
+                                color = PosUiTokens.PrimaryBrand,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 softWrap = false,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp)
                             )
                         }
                     }
@@ -314,4 +460,3 @@ private fun PosCustomerInlineCard(
         }
     }
 }
-

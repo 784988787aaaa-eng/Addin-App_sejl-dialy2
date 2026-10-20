@@ -21,13 +21,17 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.data.ProductEntity
 import com.example.domain.LedgerCalculator
 import com.example.ui.CartItemUi
@@ -36,122 +40,206 @@ import com.example.util.cleanNum
 import com.example.util.formatCombinedUnitsArabic
 
 /**
- * شبكة الأصناف الرشيقة والمنظمة (قابلة للطي + 4 أعمدة بمسافات مريحة + الحذف بضغطة مطولة ثم زر سلة محذوفات حمراء صغير جداً مع رسالة تأكيد)
+ * شريط استدعاء الأصناف الذكي: إزاحة زر عرض الأصناف مكان نص الأصناف بدون إسدال رأسي،
+ * وعرض شبكة الأصناف في نافذة مستقلة فورية فوق البيانات تُغلق تلقائياً بمجرد اختيار الصنف لمواصلة الإدخال.
  */
 @Composable
 fun PosCommoditySelectionCard(
     products: List<ProductEntity>,
     selectedProduct: ProductEntity?,
     effectiveItems: List<CartItemUi>,
+    autoCollapseForKeyboard: Boolean = false,
     onSelectProduct: (ProductEntity) -> Unit,
     onDeleteProduct: (ProductEntity) -> Unit,
     onOpenEditProducts: () -> Unit
 ) {
     val haptics = LocalHapticFeedback.current
     val rows = remember(products) { products.chunked(4) }
-    var isGridExpanded by remember { mutableStateOf(true) }
+    var showCommoditiesDialog by remember { mutableStateOf(false) }
     var deleteBadgeProductKey by remember { mutableStateOf<String?>(null) }
     var pendingDeleteProduct by remember { mutableStateOf<ProductEntity?>(null) }
 
     Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        color = PosUiTokens.CardSurface,
+        shape = PosUiTokens.CardShape,
+        border = BorderStroke(1.dp, PosUiTokens.CardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(7.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 4.5.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        text = "الأصناف",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF1E293B),
-                        maxLines = 1
-                    )
-                    Surface(
-                        color = Color(0xFFF8FAFC),
-                        shape = RoundedCornerShape(6.dp),
-                        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
-                        modifier = Modifier.clickable { isGridExpanded = !isGridExpanded }
-                    ) {
-                        Text(
-                            text = if (isGridExpanded) "طي القائمة ▴" else "عرض الأصناف (${products.size}) ▾",
-                            color = Color(0xFF475569),
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
-                }
-
+                // تم حذف نص "الأصناف" وإزاحة زر "عرض الأصناف" مكانه مباشرة كما طلب المستخدم
                 Surface(
-                    color = Color(0xFFF8FAFC),
-                    shape = RoundedCornerShape(7.dp),
-                    border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
-                    modifier = Modifier
-                        .testTag("edit_default_products_button")
-                        .clickable { onOpenEditProducts() }
+                    color = PosUiTokens.SubtleSurface,
+                    shape = PosUiTokens.BadgeShape,
+                    border = BorderStroke(1.dp, PosUiTokens.InputBorderIdle),
+                    modifier = Modifier.clickable { showCommoditiesDialog = true }
                 ) {
                     Text(
-                        text = "⚙️ الوحدات والأسعار",
-                        color = Color(0xFF1E3A8A),
+                        text = "عرض الأصناف (${products.size}) ▾",
+                        color = PosUiTokens.PrimaryBrand,
                         fontSize = 9.5.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        softWrap = false,
+                        fontWeight = FontWeight.Black,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                     )
                 }
+
+                if (selectedProduct != null) {
+                    Surface(
+                        color = Color(selectedProduct.colorBgHex),
+                        shape = PosUiTokens.BadgeShape,
+                        border = BorderStroke(1.dp, Color(selectedProduct.borderHex).copy(alpha = 0.7f)),
+                        modifier = Modifier.clickable { showCommoditiesDialog = true }
+                    ) {
+                        Text(
+                            text = "المحدد: ${selectedProduct.name}",
+                            color = Color(selectedProduct.colorTextHex),
+                            fontSize = 9.5.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        )
+                    }
+                }
             }
 
-            if (isGridExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    rows.forEach { rowProducts ->
+            Surface(
+                color = PosUiTokens.SubtleSurface,
+                shape = PosUiTokens.BadgeShape,
+                border = BorderStroke(1.dp, PosUiTokens.InputBorderIdle),
+                modifier = Modifier
+                    .testTag("edit_default_products_button")
+                    .clickable { onOpenEditProducts() }
+            ) {
+                Text(
+                    text = "⚙️ الوحدات والأسعار",
+                    color = PosUiTokens.TextSecondary,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                )
+            }
+        }
+    }
+
+    // نافذة اختيار الأصناف المنبثقة المستقلة (تظهر فوق البيانات فوراً وبدون إسدال للأسفل)
+    if (showCommoditiesDialog) {
+        Dialog(onDismissRequest = { showCommoditiesDialog = false }) {
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                Surface(
+                    color = PosUiTokens.CardSurface,
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, PosUiTokens.CardBorder),
+                    shadowElevation = 10.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp)
+                    ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(IntrinsicSize.Min),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            rowProducts.forEach { prod ->
-                                val isSelected = prod.key == selectedProduct?.key
-                                val inEffective = effectiveItems.find { it.productKey == prod.key }
-                                AgileCommodityCard(
-                                    product = prod,
-                                    isSelected = isSelected,
-                                    showDeleteBadge = deleteBadgeProductKey == prod.key,
-                                    cartBadgeText = inEffective?.unitDisplay,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight(),
-                                    onClick = {
-                                        if (deleteBadgeProductKey != null) {
-                                            deleteBadgeProductKey = null
-                                        }
-                                        onSelectProduct(prod)
-                                    },
-                                    onLongClick = {
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        deleteBadgeProductKey = if (deleteBadgeProductKey == prod.key) null else prod.key
-                                    },
-                                    onDeleteBadgeClick = {
-                                        deleteBadgeProductKey = null
-                                        pendingDeleteProduct = prod
-                                    }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "اختر الصنف للبيع (${products.size})",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = PosUiTokens.TextPrimary
                                 )
+                                if (selectedProduct != null) {
+                                    Surface(
+                                        color = Color(selectedProduct.colorBgHex),
+                                        shape = PosUiTokens.BadgeShape,
+                                        border = BorderStroke(0.8.dp, Color(selectedProduct.borderHex).copy(alpha = 0.7f))
+                                    ) {
+                                        Text(
+                                            text = "الحالي: ${selectedProduct.name}",
+                                            color = Color(selectedProduct.colorTextHex),
+                                            fontSize = 8.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                                        )
+                                    }
+                                }
                             }
-                            repeat(4 - rowProducts.size) { Spacer(modifier = Modifier.weight(1f)) }
+
+                            Surface(
+                                color = PosUiTokens.SubtleSurface,
+                                shape = PosUiTokens.BadgeShape,
+                                border = BorderStroke(1.dp, PosUiTokens.CardBorder),
+                                modifier = Modifier
+                                    .size(26.dp)
+                                    .clickable { showCommoditiesDialog = false }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "✕",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = PosUiTokens.TextSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        // شبكة الأصناف الكاملة في نافذة منبثقة فوق البيانات
+                        Column(verticalArrangement = Arrangement.spacedBy(4.5.dp)) {
+                            rows.forEach { rowProducts ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(IntrinsicSize.Min),
+                                    horizontalArrangement = Arrangement.spacedBy(4.5.dp)
+                                ) {
+                                    rowProducts.forEach { prod ->
+                                        val isSelected = prod.key == selectedProduct?.key
+                                        val inEffective = effectiveItems.find { it.productKey == prod.key }
+                                        AgileCommodityCard(
+                                            product = prod,
+                                            isSelected = isSelected,
+                                            showDeleteBadge = deleteBadgeProductKey == prod.key,
+                                            cartBadgeText = inEffective?.unitDisplay,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .fillMaxHeight(),
+                                            onClick = {
+                                                if (deleteBadgeProductKey != null) {
+                                                    deleteBadgeProductKey = null
+                                                }
+                                                // بالضغط على الصنف يتم إضافته في الحقول فوراً وإغلاق النافذة للمواصلة
+                                                onSelectProduct(prod)
+                                                showCommoditiesDialog = false
+                                            },
+                                            onLongClick = {
+                                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                deleteBadgeProductKey = if (deleteBadgeProductKey == prod.key) null else prod.key
+                                            },
+                                            onDeleteBadgeClick = {
+                                                deleteBadgeProductKey = null
+                                                pendingDeleteProduct = prod
+                                            }
+                                        )
+                                    }
+                                    repeat(4 - rowProducts.size) { Spacer(modifier = Modifier.weight(1f)) }
+                                }
+                            }
                         }
                     }
                 }
@@ -188,18 +276,18 @@ private fun AgileCommodityCard(
 ) {
     Surface(
         color = Color(product.colorBgHex),
-        shape = RoundedCornerShape(9.dp),
+        shape = RoundedCornerShape(8.dp),
         border = BorderStroke(
-            width = if (showDeleteBadge || isSelected) 1.8.dp else 1.dp,
+            width = if (showDeleteBadge || isSelected) 1.7.dp else 0.9.dp,
             color = when {
-                showDeleteBadge -> Color(0xFFDC2626)
-                isSelected -> Color(0xFF0F172A)
+                showDeleteBadge -> PosUiTokens.DangerRed
+                isSelected -> PosUiTokens.ElevatedDarkSurface
                 else -> Color(product.borderHex).copy(alpha = 0.65f)
             }
         ),
         modifier = modifier
-            .defaultMinSize(minHeight = 42.dp)
-            .clip(RoundedCornerShape(9.dp))
+            .defaultMinSize(minHeight = 35.dp)
+            .clip(RoundedCornerShape(8.dp))
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
@@ -209,37 +297,52 @@ private fun AgileCommodityCard(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
+            if (isSelected) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth(0.45f)
+                        .height(2.dp)
+                        .background(
+                            color = PosUiTokens.ElevatedDarkSurface,
+                            shape = RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)
+                        )
+                )
+            }
+
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 4.dp, vertical = 5.dp),
+                    .padding(horizontal = 3.dp, vertical = 3.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
                 Text(
                     text = product.name,
                     color = Color(product.colorTextHex),
-                    fontSize = 10.sp,
-                    lineHeight = 12.sp,
+                    fontSize = 9.5.sp,
+                    lineHeight = 11.sp,
                     fontWeight = if (isSelected) FontWeight.Black else FontWeight.ExtraBold,
                     textAlign = TextAlign.Center,
-                    softWrap = true
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
                 if (!cartBadgeText.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(2.dp))
+                    Spacer(modifier = Modifier.height(1.dp))
                     Surface(
-                        color = Color.White.copy(alpha = 0.85f),
+                        color = Color.White.copy(alpha = 0.9f),
                         shape = RoundedCornerShape(4.dp)
                     ) {
                         Text(
                             text = cartBadgeText,
-                            color = Color(0xFF047857),
-                            fontSize = 8.5.sp,
-                            lineHeight = 10.sp,
+                            color = PosUiTokens.PositiveGreen,
+                            fontSize = 8.sp,
+                            lineHeight = 9.5.sp,
                             fontWeight = FontWeight.Black,
                             textAlign = TextAlign.Center,
-                            softWrap = true,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
                         )
                     }
                 }
@@ -249,10 +352,10 @@ private fun AgileCommodityCard(
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(2.dp)
-                        .size(20.dp)
+                        .padding(1.5.dp)
+                        .size(18.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFFDC2626))
+                        .background(PosUiTokens.DangerRed)
                         .border(1.dp, Color.White, CircleShape)
                         .testTag("delete_product_badge_${product.key}")
                         .clickable { onDeleteBadgeClick() },
@@ -262,7 +365,7 @@ private fun AgileCommodityCard(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "حذف الصنف ${product.name}",
                         tint = Color.White,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(11.dp)
                     )
                 }
             }
@@ -299,14 +402,14 @@ fun PosDirectQuantityEntryCard(
     var showConfirmEditPrice by remember { mutableStateOf(false) }
 
     Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        color = PosUiTokens.CardSurface,
+        shape = PosUiTokens.CardShape,
+        border = BorderStroke(1.dp, PosUiTokens.CardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             // شريط معلومات الصنف المحدد والسعر والوحدة
             Row(
@@ -316,44 +419,44 @@ fun PosDirectQuantityEntryCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     modifier = Modifier.weight(1f)
                 ) {
                     Surface(
                         color = Color(selectedProduct.colorBgHex),
-                        shape = RoundedCornerShape(7.dp),
+                        shape = PosUiTokens.BadgeShape,
                         border = BorderStroke(1.dp, Color(selectedProduct.borderHex).copy(alpha = 0.7f))
                     ) {
                         Text(
                             text = selectedProduct.name,
                             color = Color(selectedProduct.colorTextHex),
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Black,
                             maxLines = 1,
                             softWrap = false,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
                     }
                     if (combinedPreview.isNotBlank()) {
                         Surface(
-                            color = Color(0xFFECFDF5),
-                            shape = RoundedCornerShape(6.dp),
-                            border = BorderStroke(1.dp, Color(0xFFA7F3D0))
+                            color = PosUiTokens.PositiveSoftBg,
+                            shape = PosUiTokens.BadgeShape,
+                            border = BorderStroke(1.dp, PosUiTokens.PositiveSoftBorder)
                         ) {
                             Text(
                                 text = combinedPreview,
-                                color = Color(0xFF047857),
-                                fontSize = 10.sp,
+                                color = PosUiTokens.PositiveGreen,
+                                fontSize = 9.5.sp,
                                 fontWeight = FontWeight.Black,
                                 maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
                             )
                         }
                     } else {
                         Text(
                             text = "المتوفر: $currentStockFormatted",
-                            color = Color(0xFF64748B),
-                            fontSize = 10.sp,
+                            color = PosUiTokens.TextMuted,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
@@ -362,62 +465,62 @@ fun PosDirectQuantityEntryCard(
 
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     if (!hasMinorUnit) {
                         Surface(
-                            color = Color(0xFFF8FAFC),
-                            shape = RoundedCornerShape(7.dp),
-                            border = BorderStroke(1.dp, Color(0xFFE2E8F0)),
+                            color = PosUiTokens.SubtleSurface,
+                            shape = PosUiTokens.BadgeShape,
+                            border = BorderStroke(1.dp, PosUiTokens.CardBorder),
                             modifier = Modifier.clickable { onOpenEditProducts() }
                         ) {
                             Text(
                                 text = "+ وحدة صغرى",
-                                color = Color(0xFF475569),
-                                fontSize = 9.5.sp,
+                                color = PosUiTokens.TextSecondary,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 softWrap = false,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
                     if (!showPriceField && selectedProduct.price > 0) {
                         Surface(
-                            color = Color(0xFFF8FAFC),
-                            shape = RoundedCornerShape(7.dp),
-                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            color = PosUiTokens.SubtleSurface,
+                            shape = PosUiTokens.BadgeShape,
+                            border = BorderStroke(1.dp, PosUiTokens.InputBorderIdle),
                             modifier = Modifier.clickable { showConfirmEditPrice = true }
                         ) {
                             Text(
                                 text = "السعر: ${selectedProduct.price.cleanNum()} ✎",
-                                color = Color(0xFF334155),
-                                fontSize = 9.5.sp,
+                                color = PosUiTokens.TextSecondary,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 softWrap = false,
-                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
                     }
                 }
             }
 
-            // صف إدخال الكميات (الكبرى والصغرى) بشكل واسع ومريح
+            // صف إدخال الكميات (الكبرى والصغرى) مع أزرار الزيادة السريعة وزر الإضافة المباشر
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.Top
             ) {
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
                         text = "الكمية (${selectedProduct.majorUnit})",
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF334155),
+                        color = PosUiTokens.TextSecondary,
                         maxLines = 1
                     )
                     CompactInlineField(
@@ -440,7 +543,7 @@ fun PosDirectQuantityEntryCard(
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        horizontalArrangement = Arrangement.spacedBy(3.5.dp)
                     ) {
                         QuickMiniPill("+1", Modifier.weight(1f)) { viewModel.addQuickMajorQty(1.0) }
                         QuickMiniPill("+5", Modifier.weight(1f)) { viewModel.addQuickMajorQty(5.0) }
@@ -451,13 +554,13 @@ fun PosDirectQuantityEntryCard(
                 if (hasMinorUnit) {
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = "الوحدة الصغرى (${selectedProduct.minorUnit})",
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF334155),
+                            color = PosUiTokens.TextSecondary,
                             maxLines = 1
                         )
                         CompactInlineField(
@@ -474,7 +577,7 @@ fun PosDirectQuantityEntryCard(
                         )
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(3.5.dp)
                         ) {
                             QuickMiniPill("+1", Modifier.weight(1f)) { viewModel.addQuickMinorQty(1.0) }
                             QuickMiniPill("+2", Modifier.weight(1f)) { viewModel.addQuickMinorQty(2.0) }
@@ -486,11 +589,11 @@ fun PosDirectQuantityEntryCard(
                 if (!showPriceField) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = "إضافة",
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.Transparent
                         )
@@ -499,16 +602,16 @@ fun PosDirectQuantityEntryCard(
                                 onFinishEditSavedPrice()
                                 viewModel.addOrUpdateCurrentItemInCart(autoDefaultToOne = true)
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = PosUiTokens.PrimaryAction),
+                            shape = PosUiTokens.FieldShape,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
                             modifier = Modifier
-                                .height(38.dp)
+                                .height(PosUiTokens.FieldHeight)
                                 .testTag("add_to_invoice_button")
                         ) {
                             Text(
                                 text = "+ صنف",
-                                fontSize = 11.sp,
+                                fontSize = 10.5.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color.White,
                                 maxLines = 1,
@@ -519,22 +622,22 @@ fun PosDirectQuantityEntryCard(
                 }
             }
 
-            // صف مستقل لسعر الوحدة مع زر الإضافة عند تفعيل تعديل السعر أو عدم وجود سعر محفوظ (لمنع تكدس الحقول أفقياً)
+            // صف مستقل لسعر الوحدة مع زر الإضافة عند تفعيل تعديل السعر أو عدم وجود سعر محفوظ
             if (showPriceField) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = "سعر ${selectedProduct.majorUnit} (يُحفظ تلقائياً)",
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF475569),
+                            color = PosUiTokens.TextSecondary,
                             maxLines = 1
                         )
                         CompactInlineFieldWithCalc(
@@ -557,16 +660,16 @@ fun PosDirectQuantityEntryCard(
                             onFinishEditSavedPrice()
                             viewModel.addOrUpdateCurrentItemInCart(autoDefaultToOne = true)
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = PosUiTokens.PrimaryAction),
+                        shape = PosUiTokens.FieldShape,
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                         modifier = Modifier
-                            .height(38.dp)
+                            .height(PosUiTokens.FieldHeight)
                             .testTag("add_to_invoice_button")
                     ) {
                         Text(
                             text = "+ صنف",
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             fontWeight = FontWeight.Black,
                             color = Color.White,
                             maxLines = 1,
@@ -588,4 +691,3 @@ fun PosDirectQuantityEntryCard(
         )
     }
 }
-

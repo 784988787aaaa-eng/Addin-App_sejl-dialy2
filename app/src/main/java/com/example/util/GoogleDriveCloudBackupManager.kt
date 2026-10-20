@@ -3,8 +3,6 @@ package com.example.util
 import android.accounts.Account
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import com.google.android.gms.auth.GoogleAuthUtil
 import com.google.android.gms.auth.UserRecoverableAuthException
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -24,7 +22,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
-import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -61,15 +58,6 @@ data class DriveBackupFileMetadata(
             else -> String.format(Locale.US, "%.2f MB", sizeBytes / (1024.0 * 1024.0))
         }
 }
-
-/**
- * معلومات التوقيع الرقمي للتطبيق لتسجيله في Google Cloud Console بسهولة
- */
-data class ApkSigningConsoleInfo(
-    val packageName: String,
-    val sha1: String,
-    val sha256: String
-)
 
 /**
  * نتيجة عمليات Google Drive السحابية الحقيقية
@@ -594,40 +582,5 @@ object GoogleDriveCloudBackupManager {
             "تعذر إتمام العملية على Google Drive (رمز HTTP $httpCode)"
         }
     }
-
-    /**
-     * استخراج بصمة شهادة التوقيع الفعلية (SHA-1 و SHA-256) واسم الحزمة للتطبيق المثبت حالياً
-     * لمساعدة المستخدم في تسجيل التطبيق في Google Cloud Console بضغطة زر
-     */
-    @Suppress("DEPRECATION")
-    fun extractApkSigningInfo(context: Context): ApkSigningConsoleInfo {
-        val pkgName = context.packageName
-        return try {
-            val pm = context.packageManager
-            val certBytes: ByteArray? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val pkgInfo = pm.getPackageInfo(pkgName, PackageManager.GET_SIGNING_CERTIFICATES)
-                val signingInfo = pkgInfo.signingInfo
-                val sigs = if (signingInfo != null) {
-                    if (signingInfo.hasMultipleSigners()) signingInfo.apkContentsSigners
-                    else signingInfo.signingCertificateHistory
-                } else null
-                sigs?.firstOrNull()?.toByteArray()
-            } else {
-                val pkgInfo = pm.getPackageInfo(pkgName, PackageManager.GET_SIGNATURES)
-                pkgInfo.signatures?.firstOrNull()?.toByteArray()
-            }
-
-            if (certBytes != null) {
-                val sha1 = MessageDigest.getInstance("SHA-1").digest(certBytes)
-                    .joinToString(":") { "%02X".format(it) }
-                val sha256 = MessageDigest.getInstance("SHA-256").digest(certBytes)
-                    .joinToString(":") { "%02X".format(it) }
-                ApkSigningConsoleInfo(packageName = pkgName, sha1 = sha1, sha256 = sha256)
-            } else {
-                ApkSigningConsoleInfo(packageName = pkgName, sha1 = "غير متاح", sha256 = "غير متاح")
-            }
-        } catch (_: Exception) {
-            ApkSigningConsoleInfo(packageName = pkgName, sha1 = "غير متاح", sha256 = "غير متاح")
-        }
-    }
 }
+
