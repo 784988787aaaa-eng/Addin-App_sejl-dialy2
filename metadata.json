@@ -1,0 +1,6 @@
+{
+  "name": "السجل اليومي",
+  "description": "نظام السجل اليومي وكشف الحساب المتكامل لإصدار فواتير البيع وسندات التوريد ومشاركة الكشف المطبوع PDF والنسخ الاحتياطي",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
