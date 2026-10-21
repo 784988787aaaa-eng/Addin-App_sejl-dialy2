@@ -6,6 +6,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -100,6 +102,7 @@ fun EditProductsAndUnitsDialog(
         mutableStateOf(if (isAddingNew) "" else if ((currentProduct?.stock ?: 0.0) != 0.0) currentProduct!!.stock.cleanNum() else "")
     }
     var showConfirmEditProduct by remember { mutableStateOf(false) }
+    var showPriceCalculator by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
@@ -310,13 +313,34 @@ fun EditProductsAndUnitsDialog(
                     }
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        val priceInteractionSource = remember { MutableInteractionSource() }
+                        LaunchedEffect(priceInteractionSource) {
+                            priceInteractionSource.interactions.collect { interaction ->
+                                if (interaction is PressInteraction.Release) {
+                                    showPriceCalculator = true
+                                }
+                            }
+                        }
+
                         OutlinedTextField(
                             value = priceInput,
                             onValueChange = { priceInput = it },
                             label = { Text("سعر ${majorUnitInput.ifBlank { "الوحدة" }} (يُحفظ دائماً)", fontSize = 10.5.sp) },
+                            placeholder = { Text("0", fontSize = 10.sp) },
+                            trailingIcon = {
+                                IconButton(
+                                    onClick = { showPriceCalculator = true },
+                                    modifier = Modifier.size(34.dp)
+                                ) {
+                                    Text("🧮", fontSize = 14.sp)
+                                }
+                            },
+                            interactionSource = priceInteractionSource,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                             singleLine = true,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable { showPriceCalculator = true }
                         )
                         OutlinedTextField(
                             value = stockInput,
@@ -371,6 +395,18 @@ fun EditProductsAndUnitsDialog(
                 onDismiss()
             },
             onDismiss = { showConfirmEditProduct = false }
+        )
+    }
+
+    if (showPriceCalculator) {
+        ArabicCalculatorDialog(
+            targetFieldName = "سعر ${majorUnitInput.ifBlank { "الوحدة" }}",
+            initialValue = priceInput,
+            onDismiss = { showPriceCalculator = false },
+            onApplyValue = { resultStr ->
+                priceInput = resultStr
+                showPriceCalculator = false
+            }
         )
     }
 

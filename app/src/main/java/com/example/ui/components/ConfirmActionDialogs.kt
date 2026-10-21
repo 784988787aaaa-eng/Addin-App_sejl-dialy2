@@ -13,10 +13,12 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.data.ProductEntity
 import com.example.data.SaleInvoiceEntity
 import com.example.data.SupplyBatchEntity
@@ -38,43 +40,73 @@ fun ConfirmActionDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    // توزيع عرض الأزرار بتناسب بصري ذكي حسب طول النص لمنع التفاف النص دون داعٍ
+    val cancelLength = cancelText.trim().length
+    val confirmLength = confirmText.trim().length
+    val (cancelWeight, confirmWeight) = when {
+        cancelLength > confirmLength + 3 -> 1.45f to 0.95f
+        confirmLength > cancelLength + 3 -> 0.95f to 1.45f
+        else -> 1f to 1f
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(1.dp, if (isDanger) Color(0xFFFCA5A5) else Color(0xFFCBD5E1)),
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.dp, if (isDanger) Color(0xFFFECDD3) else Color(0xFFCBD5E1)),
+                shadowElevation = 10.dp,
+                modifier = Modifier
+                    .fillMaxWidth(0.92f)
+                    .widthIn(max = 420.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(13.dp)
                 ) {
                     Text(
                         text = title,
-                        fontSize = 14.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Black,
                         color = if (isDanger) Color(0xFFBE123C) else Color(0xFF0F172A)
                     )
                     Text(
                         text = message,
-                        fontSize = 11.5.sp,
-                        lineHeight = 17.sp,
+                        fontSize = 12.5.sp,
+                        lineHeight = 19.sp,
                         fontWeight = FontWeight.Medium,
                         color = Color(0xFF334155)
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
                         OutlinedButton(
                             onClick = onDismiss,
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(11.dp),
+                            border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color(0xFFF8FAFC)
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(cancelWeight)
+                                .height(44.dp)
                                 .testTag("confirm_dialog_cancel_button")
                         ) {
-                            Text(cancelText, fontWeight = FontWeight.Bold, color = Color(0xFF334155))
+                            Text(
+                                text = cancelText,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF334155),
+                                fontSize = 12.5.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                textAlign = TextAlign.Center
+                            )
                         }
                         Button(
                             onClick = {
@@ -84,12 +116,22 @@ fun ConfirmActionDialog(
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = if (isDanger) Color(0xFFE11D48) else Color(0xFF0D9488)
                             ),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(11.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             modifier = Modifier
-                                .weight(1.25f)
+                                .weight(confirmWeight)
+                                .height(44.dp)
                                 .testTag("confirm_dialog_confirm_button")
                         ) {
-                            Text(confirmText, fontWeight = FontWeight.Black, color = Color.White)
+                            Text(
+                                text = confirmText,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                fontSize = 12.5.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }

@@ -405,17 +405,31 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         val sanitized = value.replace("-", "")
         _unitPriceInput.value = sanitized
         val pVal = sanitized.toDoubleOrNull()?.let { LedgerCalculator.roundMoney(it) }
-        val key = _selectedProductKey.value
         if (pVal != null && pVal > 0.0) {
             _highlightMissingPrice.value = false
             if (_entryValidationAlert.value == "أدخل سعر الصنف أولاً") {
                 _entryValidationAlert.value = null
             }
-            val prod = products.value.find { it.key == key }
-            if (prod != null && prod.price != pVal) {
+        }
+    }
+
+    /**
+     * اعتماد وحفظ السعر المدخل في قاعدة البيانات عند الضغط على تأكيد/تم أو الإضافة
+     */
+    fun commitCurrentUnitPrice(): Boolean {
+        val prod = products.value.find { it.key == _selectedProductKey.value } ?: return false
+        val pVal = _unitPriceInput.value.toDoubleOrNull()?.let { LedgerCalculator.roundMoney(it) } ?: return false
+        if (pVal > 0.0) {
+            _highlightMissingPrice.value = false
+            if (_entryValidationAlert.value == "أدخل سعر الصنف أولاً") {
+                _entryValidationAlert.value = null
+            }
+            if (prod.price != pVal) {
                 viewModelScope.launch(Dispatchers.IO) { dao.upsertProduct(prod.copy(price = pVal)) }
             }
+            return true
         }
+        return false
     }
 
     /**

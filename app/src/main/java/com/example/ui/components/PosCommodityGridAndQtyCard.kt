@@ -729,6 +729,7 @@ fun PosDirectQuantityEntryCard(
                                 onOpenCalc = { onOpenCalculator(CalculatorTarget.UNIT_PRICE) },
                                 onImeDone = {
                                     if (!isMissingPriceNow) {
+                                        viewModel.commitCurrentUnitPrice()
                                         onFinishEditSavedPrice()
                                         paidFocus.requestFocus()
                                     }
