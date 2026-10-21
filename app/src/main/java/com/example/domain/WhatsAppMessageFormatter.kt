@@ -50,12 +50,17 @@ object WhatsAppMessageFormatter {
                     .replace("إشعار دين سابق:", "سداد دين سابق:")
                     .replace("إجمالي الديون السابقة المستلمة (إشعار):", "إجمالي سداد الديون السابقة:")
                 val trimmed = normalized.trim()
+                val withEmoji = when {
+                    trimmed.startsWith("فاتورة رقم:") -> "🔴 $trimmed"
+                    trimmed.startsWith("توريد بضاعة رقم:") -> "🟢 $trimmed"
+                    else -> normalized
+                }
                 if ((trimmed.startsWith("مسلم دين سابق") || trimmed.startsWith("سداد دين سابق")) &&
                     trimmed.endsWith("دين سابق")
                 ) {
                     trimmed.removeSuffix("دين سابق").trimEnd()
                 } else {
-                    normalized
+                    withEmoji
                 }
             }
             .toMutableList()
@@ -87,7 +92,7 @@ object WhatsAppMessageFormatter {
     }
 
     /**
-     * رسالة واتساب رسمية ومباشرة للعميل معتمدة على الحساب الموحد (UnifiedInvoiceAccounting)
+     * رسالة واتساب رسمية ومباشرة للعميل معتمدة على الحساب الموحد (UnifiedInvoiceAccounting) مع إيموجي الفاتورة الأحمر 🔴
      */
     fun buildCustomerWhatsAppMessage(
         invNum: String,
@@ -112,13 +117,13 @@ object WhatsAppMessageFormatter {
             fallbackGrossSubtotalIfNoItems = LedgerCalculator.addMoney(subtotal, discount)
         )
 
-        appendLine("فاتورة رقم: $invNum")
+        appendLine("🔴 فاتورة رقم: $invNum")
         appendLine("العميل: $customerName")
         appendLine("اليوم: $dayName | التاريخ: $date | الوقت: $time")
         appendLine("────────────────")
         if (items.isNotEmpty()) {
-            items.forEachIndexed { idx, item ->
-                appendLine("${idx + 1}. ${item.name} : ${item.unitDisplay} = ${item.total.cleanNum()} $currency")
+            items.forEach { item ->
+                appendLine("• ${item.name}: ${item.unitDisplay} (${item.total.cleanNum()} $currency)")
             }
             appendLine("────────────────")
         }
@@ -145,7 +150,7 @@ object WhatsAppMessageFormatter {
     }.trim()
 
     /**
-     * رسالة واتساب مباشرة للمدير معتمدة على الحساب الموحد (UnifiedInvoiceAccounting) ومتبقي المخزون الدقيق
+     * رسالة واتساب مباشرة للمدير معتمدة على الحساب الموحد (UnifiedInvoiceAccounting) ومتبقي المخزون الدقيق مع إيموجي الفاتورة الأحمر 🔴
      */
     fun buildManagerInvoiceWhatsAppMessage(
         invNum: String,
@@ -171,7 +176,7 @@ object WhatsAppMessageFormatter {
             fallbackGrossSubtotalIfNoItems = LedgerCalculator.addMoney(subtotal, discount)
         )
 
-        appendLine("فاتورة رقم: $invNum")
+        appendLine("🔴 فاتورة رقم: $invNum")
         appendLine("العميل: $customerName")
         appendLine("اليوم: $dayName | التاريخ: $date | الوقت: $time")
         appendLine("────────────────")
@@ -216,7 +221,7 @@ object WhatsAppMessageFormatter {
     }.trim()
 
     /**
-     * رسالة التوريد المباشرة لواتساب المدير بدون أي عبارات ترحيبية ومع تذييل اسم المستخدم
+     * رسالة التوريد المباشرة لواتساب المدير مع إيموجي التوريد الأخضر 🟢 وتذييل اسم المستخدم
      */
     fun buildManagerSupplyWhatsAppMessage(
         batchNum: String,
@@ -232,7 +237,7 @@ object WhatsAppMessageFormatter {
     ): String = buildString {
         val prevFormatted = LedgerCalculator.formatStockMajorMinorArabic(prevStock, product)
         val totalFormatted = LedgerCalculator.formatStockMajorMinorArabic(cumulativeStock, product)
-        appendLine("توريد بضاعة رقم: $batchNum")
+        appendLine("🟢 توريد بضاعة رقم: $batchNum")
         appendLine("اليوم: $dayName | التاريخ: $date | الوقت: $time")
         appendLine("────────────────")
         appendLine("الصنف: ${product.name}")

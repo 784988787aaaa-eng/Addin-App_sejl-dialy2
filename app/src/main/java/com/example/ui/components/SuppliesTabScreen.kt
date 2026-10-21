@@ -214,7 +214,7 @@ fun SuppliesTabScreen(
                     ) {
                         OutlinedTextField(
                             value = majorQtyStr,
-                            onValueChange = { majorQtyStr = it },
+                            onValueChange = { majorQtyStr = it.replace("-", "") },
                             label = { Text("العدد المورد (${selectedProd?.majorUnit ?: "كيلو"})", fontSize = 10.5.sp) },
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Decimal,
@@ -232,7 +232,7 @@ fun SuppliesTabScreen(
                         if (hasMinorUnit) {
                             OutlinedTextField(
                                 value = minorQtyStr,
-                                onValueChange = { minorQtyStr = it },
+                                onValueChange = { minorQtyStr = it.replace("-", "") },
                                 label = { Text("الوحدة الصغرى (${selectedProd?.minorUnit})", fontSize = 10.5.sp) },
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = KeyboardType.Decimal,
@@ -258,37 +258,93 @@ fun SuppliesTabScreen(
                             .focusRequester(notesFocus)
                     )
 
-                    Button(
-                        onClick = {
-                            if (selectedProd != null) {
-                                viewModel.saveSupplyBatchToManagerWhatsApp(
-                                    context = context,
-                                    productKey = selectedProd.key,
-                                    majorQty = enteredMaj,
-                                    minorQty = enteredMin,
-                                    notes = notesStr
-                                )
-                                majorQtyStr = ""
-                                minorQtyStr = ""
-                                notesStr = ""
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(42.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "حفظ التوريد وإرساله لواتساب المدير (B$nextSupplyCounter)",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White,
-                            maxLines = 1,
-                            softWrap = false
-                        )
+                        Button(
+                            onClick = {
+                                if (selectedProd != null && (enteredMaj > 0.0 || enteredMin > 0.0)) {
+                                    viewModel.saveSupplyBatchToManagerWhatsApp(
+                                        context = context,
+                                        productKey = selectedProd.key,
+                                        majorQty = enteredMaj,
+                                        minorQty = enteredMin,
+                                        notes = notesStr,
+                                        shareToWhatsApp = true
+                                    )
+                                    majorQtyStr = ""
+                                    minorQtyStr = ""
+                                    notesStr = ""
+                                } else {
+                                    viewModel.saveSupplyBatchToManagerWhatsApp(
+                                        context = context,
+                                        productKey = selectedProd?.key ?: "",
+                                        majorQty = enteredMaj,
+                                        minorQty = enteredMin,
+                                        notes = notesStr,
+                                        shareToWhatsApp = true
+                                    )
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(1.45f)
+                                .height(42.dp)
+                        ) {
+                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "إرسال للمدير (B$nextSupplyCounter)",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                if (selectedProd != null && (enteredMaj > 0.0 || enteredMin > 0.0)) {
+                                    viewModel.saveSupplyBatchToManagerWhatsApp(
+                                        context = context,
+                                        productKey = selectedProd.key,
+                                        majorQty = enteredMaj,
+                                        minorQty = enteredMin,
+                                        notes = notesStr,
+                                        shareToWhatsApp = false
+                                    )
+                                    majorQtyStr = ""
+                                    minorQtyStr = ""
+                                    notesStr = ""
+                                } else {
+                                    viewModel.saveSupplyBatchToManagerWhatsApp(
+                                        context = context,
+                                        productKey = selectedProd?.key ?: "",
+                                        majorQty = enteredMaj,
+                                        minorQty = enteredMin,
+                                        notes = notesStr,
+                                        shareToWhatsApp = false
+                                    )
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .weight(0.85f)
+                                .height(42.dp)
+                        ) {
+                            Text(
+                                text = "حفظ فقط",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
                 }
             }

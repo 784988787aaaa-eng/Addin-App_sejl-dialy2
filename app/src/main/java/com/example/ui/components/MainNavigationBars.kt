@@ -135,6 +135,7 @@ private fun HeaderTabButton(
 fun PinnedSaveAndShareBottomBar(
     nextInvoiceNumber: String,
     lastSavedInvoiceNumber: String?,
+    onSaveOnly: () -> Unit = {},
     onSaveAndShareToCustomer: () -> Unit,
     onSaveAndShareToManager: () -> Unit,
     onSaveAndSharePdf: () -> Unit,
@@ -152,32 +153,32 @@ fun PinnedSaveAndShareBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 7.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // زر المدير في الصدارة (أول زر يميناً) لسهولة وسرعة الوصول للمدير
             Button(
                 onClick = onSaveAndShareToManager,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                shape = RoundedCornerShape(9.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                 modifier = Modifier
-                    .weight(1.2f)
-                    .height(40.dp)
+                    .weight(1.18f)
+                    .height(38.dp)
                     .testTag("share_manager_whatsapp_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.SupervisorAccount,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(13.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
-                    text = "إرسال للمدير ($nextInvoiceNumber)",
+                    text = "للمدير ($nextInvoiceNumber)",
                     color = Color.White,
-                    fontSize = 10.5.sp,
+                    fontSize = 9.5.sp,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     softWrap = false,
@@ -189,24 +190,46 @@ fun PinnedSaveAndShareBottomBar(
             Button(
                 onClick = onSaveAndShareToCustomer,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                shape = RoundedCornerShape(9.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
                 modifier = Modifier
-                    .weight(1.05f)
-                    .height(40.dp)
+                    .weight(0.95f)
+                    .height(38.dp)
                     .testTag("share_customer_whatsapp_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.Send,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
                     text = "واتس العميل",
                     color = Color.White,
-                    fontSize = 10.5.sp,
+                    fontSize = 9.5.sp,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            // زر (حفظ فقط) إلى جانب أزرار إرسال العميل وإرسال المدير
+            Button(
+                onClick = onSaveOnly,
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
+                shape = RoundedCornerShape(9.dp),
+                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                modifier = Modifier
+                    .weight(0.78f)
+                    .height(38.dp)
+                    .testTag("save_only_invoice_button")
+            ) {
+                Text(
+                    text = "حفظ فقط",
+                    color = Color.White,
+                    fontSize = 9.5.sp,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     softWrap = false,
@@ -217,23 +240,23 @@ fun PinnedSaveAndShareBottomBar(
             Button(
                 onClick = onSaveAndSharePdf,
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF334155)),
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                shape = RoundedCornerShape(9.dp),
+                contentPadding = PaddingValues(horizontal = 7.dp, vertical = 0.dp),
                 modifier = Modifier
-                    .height(40.dp)
+                    .height(38.dp)
                     .testTag("save_and_pdf_button")
             ) {
                 Icon(
                     imageVector = Icons.Default.PictureAsPdf,
                     contentDescription = "PDF",
                     tint = Color.White,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(13.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
                     text = "PDF",
                     color = Color.White,
-                    fontSize = 10.sp,
+                    fontSize = 9.5.sp,
                     fontWeight = FontWeight.Black,
                     maxLines = 1,
                     softWrap = false
@@ -244,14 +267,14 @@ fun PinnedSaveAndShareBottomBar(
                 IconButton(
                     onClick = onPrintLastInvoicePdf,
                     modifier = Modifier
-                        .size(40.dp)
-                        .background(Color(0xFFF1F5F9), RoundedCornerShape(10.dp))
+                        .size(38.dp)
+                        .background(Color(0xFFF1F5F9), RoundedCornerShape(9.dp))
                 ) {
                     Icon(
                         imageVector = Icons.Default.Print,
                         contentDescription = "طباعة آخر فاتورة",
                         tint = Color(0xFF1E293B),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(17.dp)
                     )
                 }
             }

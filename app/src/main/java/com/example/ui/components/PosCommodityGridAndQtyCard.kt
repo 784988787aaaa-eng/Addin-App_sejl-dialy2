@@ -377,10 +377,13 @@ private fun AgileCommodityCard(
 fun PosDirectQuantityEntryCard(
     viewModel: SmartTradeViewModel,
     selectedProduct: ProductEntity,
+    cartItems: List<CartItemUi>,
     majorQtyInput: String,
     minorQtyInput: String,
     unitPriceInput: String,
     showPriceField: Boolean,
+    entryValidationAlert: String?,
+    highlightMissingPrice: Boolean,
     onRequestEditSavedPrice: () -> Unit,
     onFinishEditSavedPrice: () -> Unit,
     majorQtyFocus: FocusRequester,
@@ -391,14 +394,28 @@ fun PosDirectQuantityEntryCard(
     onOpenCalculator: (CalculatorTarget) -> Unit
 ) {
     val hasMinorUnit = selectedProduct.minorUnit.isNotBlank()
-    val previewMaj = majorQtyInput.toDoubleOrNull() ?: 0.0
-    val previewMin = if (hasMinorUnit) (minorQtyInput.toDoubleOrNull() ?: 0.0) else 0.0
+    val previewMaj = (majorQtyInput.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+    val previewMin = if (hasMinorUnit) (minorQtyInput.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0) else 0.0
     val combinedPreview = remember(selectedProduct, previewMaj, previewMin) {
         if (previewMaj > 0 || previewMin > 0) formatCombinedUnitsArabic(selectedProduct.majorUnit, selectedProduct.minorUnit, previewMaj, previewMin) else ""
     }
-    val currentStockFormatted = remember(selectedProduct) {
-        LedgerCalculator.formatStockMajorMinorArabic(selectedProduct.stock, selectedProduct)
+
+    val validation = remember(selectedProduct, cartItems, majorQtyInput, minorQtyInput, unitPriceInput) {
+        com.example.ui.CartCalculatorHelper.evaluateProductEntryValidation(
+            product = selectedProduct,
+            cart = cartItems,
+            majorStr = majorQtyInput,
+            minorStr = minorQtyInput,
+            priceStr = unitPriceInput
+        )
     }
+
+    val currentStockFormatted = validation.availableFormatted
+    val isProductZeroStock = selectedProduct.stock <= 0.0
+    val activeStockAlert = validation.stockErrorMessage
+        ?: entryValidationAlert?.takeIf { !it.contains("سعر") }
+    val isMissingPriceNow = validation.isPriceMissing
+
     var showConfirmEditPrice by remember { mutableStateOf(false) }
 
     Surface(
@@ -409,9 +426,9 @@ fun PosDirectQuantityEntryCard(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
+            verticalArrangement = Arrangement.spacedBy(4.5.dp)
         ) {
-            // شريط معلومات الصنف المحدد والسعر والوحدة
+            // شريط معلومات الصنف المحدد والسعر والكمية المتوفرة
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -437,29 +454,64 @@ fun PosDirectQuantityEntryCard(
                             modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
                         )
                     }
-                    if (combinedPreview.isNotBlank()) {
-                        Surface(
-                            color = PosUiTokens.PositiveSoftBg,
-                            shape = PosUiTokens.BadgeShape,
-                            border = BorderStroke(1.dp, PosUiTokens.PositiveSoftBorder)
-                        ) {
+                    when {
+                        isProductZeroStock -> {
+                            Surface(
+                                color = PosUiTokens.DangerSoftBg,
+                                shape = PosUiTokens.BadgeShape,
+                                border = BorderStroke(0.8.dp, PosUiTokens.DangerSoftBorder)
+                            ) {
+                                Text(
+                                    text = "غير متوفر (0 ${selectedProduct.majorUnit})",
+                                    color = PosUiTokens.DangerRed,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                )
+                            }
+                        }
+                        validation.isInsufficientStock -> {
+                            Surface(
+                                color = PosUiTokens.DangerSoftBg,
+                                shape = PosUiTokens.BadgeShape,
+                                border = BorderStroke(0.8.dp, PosUiTokens.DangerSoftBorder)
+                            ) {
+                                Text(
+                                    text = "المتوفر فقط: $currentStockFormatted",
+                                    color = PosUiTokens.DangerRed,
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                )
+                            }
+                        }
+                        combinedPreview.isNotBlank() -> {
+                            Surface(
+                                color = PosUiTokens.PositiveSoftBg,
+                                shape = PosUiTokens.BadgeShape,
+                                border = BorderStroke(1.dp, PosUiTokens.PositiveSoftBorder)
+                            ) {
+                                Text(
+                                    text = combinedPreview,
+                                    color = PosUiTokens.PositiveGreen,
+                                    fontSize = 9.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                )
+                            }
+                        }
+                        else -> {
                             Text(
-                                text = combinedPreview,
-                                color = PosUiTokens.PositiveGreen,
+                                text = "المتوفر: $currentStockFormatted",
+                                color = PosUiTokens.TextMuted,
                                 fontSize = 9.5.sp,
-                                fontWeight = FontWeight.Black,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
                             )
                         }
-                    } else {
-                        Text(
-                            text = "المتوفر: $currentStockFormatted",
-                            color = PosUiTokens.TextMuted,
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
                     }
                 }
 
@@ -599,8 +651,12 @@ fun PosDirectQuantityEntryCard(
                         )
                         Button(
                             onClick = {
-                                onFinishEditSavedPrice()
-                                viewModel.addOrUpdateCurrentItemInCart(autoDefaultToOne = true)
+                                val added = viewModel.addOrUpdateCurrentItemInCart(autoDefaultToOne = true)
+                                if (added) {
+                                    onFinishEditSavedPrice()
+                                } else if (isMissingPriceNow) {
+                                    unitPriceFocus.requestFocus()
+                                }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = PosUiTokens.PrimaryAction),
                             shape = PosUiTokens.FieldShape,
@@ -622,58 +678,107 @@ fun PosDirectQuantityEntryCard(
                 }
             }
 
-            // صف مستقل لسعر الوحدة مع زر الإضافة عند تفعيل تعديل السعر أو عدم وجود سعر محفوظ
-            if (showPriceField) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalAlignment = Alignment.Bottom
+            // إشارة تنبيه احترافية بخط صغير عند عدم توفر المنتج أو عدم كفاية الكمية بدون تكدس رأسي
+            if (!activeStockAlert.isNullOrBlank()) {
+                Surface(
+                    color = PosUiTokens.DangerSoftBg,
+                    shape = PosUiTokens.BadgeShape,
+                    border = BorderStroke(0.8.dp, PosUiTokens.DangerSoftBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("stock_validation_alert")
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                    Text(
+                        text = activeStockAlert,
+                        color = PosUiTokens.DangerRed,
+                        fontSize = 8.5.sp,
+                        fontWeight = FontWeight.Black,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // صف مستقل لسعر الوحدة مع زر الإضافة وخط توضيحي أحمر هادئ عند عدم وجود تسعيرة محفوظة
+            if (showPriceField) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.Bottom
                     ) {
-                        Text(
-                            text = "سعر ${selectedProduct.majorUnit} (يُحفظ تلقائياً)",
-                            fontSize = 9.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PosUiTokens.TextSecondary,
-                            maxLines = 1
-                        )
-                        CompactInlineFieldWithCalc(
-                            value = unitPriceInput,
-                            onValueChange = { viewModel.setUnitPriceInput(it) },
-                            placeholder = "أدخل سعر ${selectedProduct.majorUnit}...",
-                            onOpenCalc = { onOpenCalculator(CalculatorTarget.UNIT_PRICE) },
-                            onImeDone = {
-                                onFinishEditSavedPrice()
-                                paidFocus.requestFocus()
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.5.dp)
+                        ) {
+                            Text(
+                                text = "سعر ${selectedProduct.majorUnit} (يُحفظ تلقائياً بعد إدخاله للمرة الأولى)",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isMissingPriceNow || highlightMissingPrice) PosUiTokens.DangerRed else PosUiTokens.TextSecondary,
+                                maxLines = 1
+                            )
+                            CompactInlineFieldWithCalc(
+                                value = unitPriceInput,
+                                onValueChange = { viewModel.setUnitPriceInput(it) },
+                                placeholder = "أدخل سعر ${selectedProduct.majorUnit} أولاً...",
+                                onOpenCalc = { onOpenCalculator(CalculatorTarget.UNIT_PRICE) },
+                                onImeDone = {
+                                    if (!isMissingPriceNow) {
+                                        onFinishEditSavedPrice()
+                                        paidFocus.requestFocus()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .focusRequester(unitPriceFocus)
+                                    .testTag("unit_price_input")
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                val added = viewModel.addOrUpdateCurrentItemInCart(autoDefaultToOne = true)
+                                if (added) {
+                                    onFinishEditSavedPrice()
+                                } else if (isMissingPriceNow) {
+                                    unitPriceFocus.requestFocus()
+                                }
                             },
+                            colors = ButtonDefaults.buttonColors(containerColor = PosUiTokens.PrimaryAction),
+                            shape = PosUiTokens.FieldShape,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .focusRequester(unitPriceFocus)
-                        )
+                                .height(PosUiTokens.FieldHeight)
+                                .testTag("add_to_invoice_button")
+                        ) {
+                            Text(
+                                text = "+ صنف",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Black,
+                                color = Color.White,
+                                maxLines = 1,
+                                softWrap = false
+                            )
+                        }
                     }
 
-                    Button(
-                        onClick = {
-                            onFinishEditSavedPrice()
-                            viewModel.addOrUpdateCurrentItemInCart(autoDefaultToOne = true)
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = PosUiTokens.PrimaryAction),
-                        shape = PosUiTokens.FieldShape,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
-                        modifier = Modifier
-                            .height(PosUiTokens.FieldHeight)
-                            .testTag("add_to_invoice_button")
-                    ) {
+                    // خط توضيحي بلون أحمر تحت حقل السعر بشكل هادئ لا يشكل زحمة
+                    if (isMissingPriceNow) {
                         Text(
-                            text = "+ صنف",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Black,
-                            color = Color.White,
+                            text = "أدخل سعر الصنف أولاً (لا يُحتسب سعر افتراضي بدون تسعيرة)",
+                            color = PosUiTokens.DangerRed,
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             maxLines = 1,
-                            softWrap = false
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .padding(horizontal = 4.dp)
+                                .testTag("missing_price_alert")
                         )
                     }
                 }

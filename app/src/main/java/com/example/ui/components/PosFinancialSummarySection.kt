@@ -312,6 +312,7 @@ fun PosFinancialEntryAndPreviewCard(
     paidInput: String,
     discountInput: String,
     previousDebtInput: String,
+    selectedPaymentOption: Int,
     paidVal: Double,
     prevDebtVal: Double,
     remaining: Double,
@@ -328,6 +329,12 @@ fun PosFinancialEntryAndPreviewCard(
 
     LaunchedEffect(isPaidFocused, isDiscountFocused, isPrevDebtFocused) {
         onFinancialFocusChanged(isPaidFocused || isDiscountFocused || isPrevDebtFocused)
+    }
+
+    LaunchedEffect(netInvoiceSubtotal, selectedPaymentOption) {
+        if (selectedPaymentOption == 0) {
+            viewModel.syncCashFullPaymentIfSelected(netInvoiceSubtotal)
+        }
     }
 
     Surface(
@@ -443,51 +450,44 @@ fun PosFinancialEntryAndPreviewCard(
                 }
             }
 
-            // 2. خيارات طريقة السداد السريعة
-            var selectedPaymentOption by remember { mutableIntStateOf(1) }
-            val isCashFull = (netInvoiceSubtotal > 0 && paidVal == netInvoiceSubtotal && prevDebtVal == 0.0) ||
-                (selectedPaymentOption == 0 && paidVal == netInvoiceSubtotal && prevDebtVal == 0.0)
-            val hasPrevDebtNote = prevDebtVal > 0.0 || selectedPaymentOption == 2
-            val isPartial = !isCashFull && !hasPrevDebtNote
-
+            // 2. خيارات طريقة السداد السريعة: انتقال حر وسلس في أي وقت حتى أثناء التركيز داخل أي حقل
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(4.5.dp)
             ) {
                 PaymentModelChip(
                     title = "نقد كامل",
-                    selected = isCashFull,
+                    selected = selectedPaymentOption == 0,
                     activeBg = PosUiTokens.PositiveGreen,
                     modifier = Modifier
                         .weight(1f)
                         .testTag("payment_chip_cash_full"),
                     onClick = {
-                        selectedPaymentOption = 0
-                        viewModel.applyCashFullPaymentModel(netInvoiceSubtotal)
+                        viewModel.selectPaymentMethod(0, netInvoiceSubtotal)
                     }
                 )
                 PaymentModelChip(
                     title = "مسلم جزء / آجل",
-                    selected = isPartial,
+                    selected = selectedPaymentOption == 1,
                     activeBg = Color(0xFF2563EB),
                     modifier = Modifier
                         .weight(1.15f)
                         .testTag("payment_chip_partial"),
                     onClick = {
-                        selectedPaymentOption = 1
+                        viewModel.selectPaymentMethod(1, netInvoiceSubtotal)
                         paidFocus.requestFocus()
                     }
                 )
                 PaymentModelChip(
                     title = "سداد دين سابق",
-                    selected = hasPrevDebtNote,
+                    selected = selectedPaymentOption == 2,
                     activeBg = Color(0xFFD97706),
                     modifier = Modifier
                         .weight(1.1f)
                         .testTag("payment_chip_prev_debt"),
                     onClick = {
-                        selectedPaymentOption = 2
                         showExtraAdjustments = true
+                        viewModel.selectPaymentMethod(2, netInvoiceSubtotal)
                         prevDebtFocus.requestFocus()
                     }
                 )
@@ -529,12 +529,13 @@ fun PosFinancialEntryAndPreviewCard(
                 CompactInlineFieldWithCalc(
                     value = paidInput,
                     onValueChange = {
-                        selectedPaymentOption = 1
+                        if (selectedPaymentOption == 0 && it != netInvoiceSubtotal.cleanNum()) {
+                            viewModel.selectPaymentMethod(1, netInvoiceSubtotal)
+                        }
                         viewModel.setPaidInput(it)
                     },
                     placeholder = "أدخل المبلغ المسلّم نقداً...",
                     onOpenCalc = {
-                        selectedPaymentOption = 1
                         onOpenCalculator(CalculatorTarget.PAID)
                     },
                     onImeDone = { focusManager.clearFocus() },
@@ -590,12 +591,14 @@ fun PosFinancialEntryAndPreviewCard(
                         CompactInlineFieldWithCalc(
                             value = previousDebtInput,
                             onValueChange = {
-                                selectedPaymentOption = 2
+                                if (it.isNotBlank()) {
+                                    viewModel.selectPaymentMethod(2, netInvoiceSubtotal)
+                                }
                                 viewModel.setPreviousDebtInput(it)
                             },
                             placeholder = "مبلغ سداد دين سابق",
                             onOpenCalc = {
-                                selectedPaymentOption = 2
+                                viewModel.selectPaymentMethod(2, netInvoiceSubtotal)
                                 onOpenCalculator(CalculatorTarget.PREV_DEBT)
                             },
                             onImeDone = { focusManager.clearFocus() },

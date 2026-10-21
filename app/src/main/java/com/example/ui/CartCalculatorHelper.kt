@@ -22,10 +22,22 @@ data class CartItemUi(
 )
 
 enum class InvoiceShareDestination {
+    SAVE_ONLY,
     CUSTOMER_WHATSAPP,
     MANAGER_WHATSAPP,
     PDF_SHARE
 }
+
+data class PosEntryValidationState(
+    val isOutOfStock: Boolean = false,
+    val isInsufficientStock: Boolean = false,
+    val isPriceMissing: Boolean = false,
+    val availableMajorEq: Double = 0.0,
+    val availableFormatted: String = "",
+    val requestedMajorEq: Double = 0.0,
+    val stockErrorMessage: String? = null,
+    val priceErrorMessage: String? = null
+)
 
 fun openWhatsAppDirectOrShare(context: Context, text: String, rawPhone: String = "", userName: String = "") {
     WhatsAppMessageFormatter.openWhatsAppDirectOrShare(context, text, rawPhone, userName)
@@ -46,22 +58,97 @@ object CartCalculatorHelper {
         return sumBd.setScale(2, RoundingMode.HALF_UP).toDouble()
     }
 
+    fun evaluateProductEntryValidation(
+        product: ProductEntity?,
+        cart: List<CartItemUi>,
+        majorStr: String,
+        minorStr: String,
+        priceStr: String
+    ): PosEntryValidationState {
+        if (product == null) return PosEntryValidationState()
+        val hasMinor = product.minorUnit.isNotBlank()
+        val factor = if (product.factor > 0.0) product.factor else 2.0
+
+        val existingInCart = cart.find { it.productKey == product.key }
+        val alreadyInCartEq = if (existingInCart != null) {
+            LedgerCalculator.computeMajorEquivalent(existingInCart.majorQty, existingInCart.minorQty, factor, hasMinor)
+        } else 0.0
+
+        val remainingAvailableEq = LedgerCalculator.subtractStock(product.stock, alreadyInCartEq).coerceAtLeast(0.0)
+        val availableFormatted = LedgerCalculator.formatStockMajorMinorArabic(remainingAvailableEq, product)
+
+        val hasNegativeSign = majorStr.trim().startsWith("-") || minorStr.trim().startsWith("-")
+        val rawMaj = majorStr.toDoubleOrNull() ?: 0.0
+        val rawMin = if (hasMinor) (minorStr.toDoubleOrNull() ?: 0.0) else 0.0
+        val hasNegativeValue = hasNegativeSign || rawMaj < 0.0 || rawMin < 0.0
+
+        val cleanMaj = rawMaj.coerceAtLeast(0.0)
+        val cleanMin = rawMin.coerceAtLeast(0.0)
+        val typedEq = LedgerCalculator.computeMajorEquivalent(cleanMaj, cleanMin, factor, hasMinor)
+
+        val effectivePrice = LedgerCalculator.roundMoney(priceStr.toDoubleOrNull() ?: product.price)
+        val isPriceMissing = effectivePrice <= 0.0
+
+        val isOutOfStock = product.stock <= 0.0 || remainingAvailableEq <= 0.0
+        val isInsufficientStock = !isOutOfStock && typedEq > remainingAvailableEq + 1e-6
+
+        val stockErrorMessage = when {
+            hasNegativeValue -> "لا يمكن إدخال كمية سالبة"
+            product.stock <= 0.0 -> "لا يمكن: هذا المنتج غير متوفر في المخزن (المتوفر: 0 ${product.majorUnit})"
+            remainingAvailableEq <= 0.0 && typedEq > 0.0 -> "لا يمكن: استُنفدت الكمية المتوفرة للصنف في الفاتورة الحالية"
+            isInsufficientStock -> "لا يمكن: الكمية غير كافية في المخزن (المتوفر: $availableFormatted)"
+            else -> null
+        }
+
+        val priceErrorMessage = if (isPriceMissing) {
+            "أدخل سعر الصنف أولاً"
+        } else null
+
+        return PosEntryValidationState(
+            isOutOfStock = isOutOfStock,
+            isInsufficientStock = isInsufficientStock,
+            isPriceMissing = isPriceMissing,
+            availableMajorEq = remainingAvailableEq,
+            availableFormatted = availableFormatted,
+            requestedMajorEq = typedEq,
+            stockErrorMessage = stockErrorMessage,
+            priceErrorMessage = priceErrorMessage
+        )
+    }
+
     fun buildPendingTypedCartItem(
         allProducts: List<ProductEntity>,
         selectedKey: String,
         majorStr: String,
         minorStr: String,
-        priceStr: String
+        priceStr: String,
+        existingCart: List<CartItemUi> = emptyList()
     ): CartItemUi? {
         val prod = allProducts.find { it.key == selectedKey } ?: allProducts.firstOrNull() ?: return null
+        if (prod.stock <= 0.0) return null
+
         val hasMinorUnit = prod.minorUnit.isNotBlank()
         val factor = if (prod.factor > 0.0) prod.factor else 2.0
         val rawMaj = majorStr.toDoubleOrNull() ?: 0.0
         val rawMin = if (hasMinorUnit) (minorStr.toDoubleOrNull() ?: 0.0) else 0.0
+        if (rawMaj < 0.0 || rawMin < 0.0) return null
+
         val (maj, min) = LedgerCalculator.normalizeMajorMinorPair(rawMaj, rawMin, factor, hasMinorUnit)
         if (maj <= 0.0 && min <= 0.0) return null
 
         val price = LedgerCalculator.roundMoney(priceStr.toDoubleOrNull() ?: prod.price)
+        // لا يمكن احتساب سعر افتراضي بـ 1 أو 0 إذا لم يتم إدخال تسعيرة واضحة للصنف
+        if (price <= 0.0) return null
+
+        val existingItem = existingCart.find { it.productKey == prod.key }
+        val existingEq = if (existingItem != null) {
+            LedgerCalculator.computeMajorEquivalent(existingItem.majorQty, existingItem.minorQty, factor, hasMinorUnit)
+        } else 0.0
+        val pendingEq = LedgerCalculator.computeMajorEquivalent(maj, min, factor, hasMinorUnit)
+        if (LedgerCalculator.addStock(existingEq, pendingEq) > prod.stock + 1e-6) {
+            return null
+        }
+
         val unitDisplay = formatCombinedUnitsArabic(
             majorUnit = prod.majorUnit,
             minorUnit = prod.minorUnit,
@@ -75,6 +162,7 @@ object CartCalculatorHelper {
             hasMinor = hasMinorUnit,
             majorUnitPrice = price
         )
+        if (lineTotal <= 0.0) return null
 
         return CartItemUi(
             productKey = prod.key,
@@ -98,8 +186,14 @@ object CartCalculatorHelper {
         minorStr: String,
         priceStr: String
     ): List<CartItemUi> {
-        val pending = buildPendingTypedCartItem(allProducts, selectedKey, majorStr, minorStr, priceStr)
-            ?: return cart
+        val pending = buildPendingTypedCartItem(
+            allProducts = allProducts,
+            selectedKey = selectedKey,
+            majorStr = majorStr,
+            minorStr = minorStr,
+            priceStr = priceStr,
+            existingCart = cart
+        ) ?: return cart
         val result = cart.toMutableList()
         val existingIdx = result.indexOfFirst { it.productKey == pending.productKey }
         if (existingIdx >= 0) {
@@ -142,9 +236,9 @@ object CartCalculatorHelper {
         val hasMinorUnit = prod.minorUnit.isNotBlank()
         val factor = if (prod.factor > 0.0) prod.factor else 2.0
 
-        val cleanMaj = LedgerCalculator.roundStock(maj)
-        val cleanMin = if (hasMinorUnit) LedgerCalculator.roundStock(min) else 0.0
-        val cleanPrice = LedgerCalculator.roundMoney(price)
+        val cleanMaj = LedgerCalculator.roundStock(maj.coerceAtLeast(0.0))
+        val cleanMin = if (hasMinorUnit) LedgerCalculator.roundStock(min.coerceAtLeast(0.0)) else 0.0
+        val cleanPrice = LedgerCalculator.roundMoney(price.coerceAtLeast(0.0))
 
         val sumMaj = if (existingIdx >= 0) LedgerCalculator.addStock(mutable[existingIdx].majorQty, cleanMaj) else cleanMaj
         val sumMin = if (existingIdx >= 0) LedgerCalculator.addStock(mutable[existingIdx].minorQty, cleanMin) else cleanMin

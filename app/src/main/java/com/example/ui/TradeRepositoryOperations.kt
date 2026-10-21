@@ -68,7 +68,8 @@ object TradeRepositoryOperations {
                     factor = factor,
                     hasMinor = hasMinor
                 )
-                val updatedProd = prod.copy(stock = LedgerCalculator.subtractStock(prod.stock, soldEq))
+                val newStock = LedgerCalculator.subtractStock(prod.stock, soldEq).coerceAtLeast(0.0)
+                val updatedProd = prod.copy(stock = newStock)
                 allProds[cartItem.productKey] = updatedProd
                 modifiedProds.add(updatedProd)
             }

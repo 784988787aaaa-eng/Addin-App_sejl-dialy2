@@ -178,17 +178,30 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
     private val _paidInput = MutableStateFlow("")
     val paidInput: StateFlow<String> = _paidInput.asStateFlow()
 
+    // 0 = نقد كامل | 1 = مسلم جزء / آجل | 2 = سداد دين سابق
+    private val _selectedPaymentOption = MutableStateFlow(1)
+    val selectedPaymentOption: StateFlow<Int> = _selectedPaymentOption.asStateFlow()
+
+    // رسالة التنبيه المدمجة تحت حقل الكمية أو السعر (لعدم توفر المخزون أو نقص السعر)
+    private val _entryValidationAlert = MutableStateFlow<String?>(null)
+    val entryValidationAlert: StateFlow<String?> = _entryValidationAlert.asStateFlow()
+
+    private val _highlightMissingPrice = MutableStateFlow(false)
+    val highlightMissingPrice: StateFlow<Boolean> = _highlightMissingPrice.asStateFlow()
+
     private val _lastSavedInvoice = MutableStateFlow<SaleInvoiceEntity?>(null)
     val lastSavedInvoice: StateFlow<SaleInvoiceEntity?> = _lastSavedInvoice.asStateFlow()
+
+    private var trackedActiveDayDate: String = getCurrentDateTimeArabic().date
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             if (dao.getAllProducts().isEmpty()) {
                 dao.upsertProducts(getInitialPaperCommodities())
             }
-            if (!prefs.getBoolean("direct_msg_migrated_v6", false)) {
+            if (!prefs.getBoolean("direct_msg_migrated_v7", false)) {
                 TradeRepositoryOperations.upgradeLegacyMessagesToDirectFormat(dao, _currency.value, _userName.value)
-                prefs.edit().putBoolean("direct_msg_migrated_v6", true).apply()
+                prefs.edit().putBoolean("direct_msg_migrated_v7", true).apply()
             }
             try {
                 val signedIn = GoogleDriveCloudBackupManager.getCurrentSignedInProfile(application)
@@ -196,6 +209,50 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
                     updateConnectedGoogleProfile(signedIn)
                 }
             } catch (_: Exception) {}
+
+            // التحقق عند فتح التطبيق مما إذا كان قد بدأ يوم جديد لتحديث التاريخ ورفع النسخة الاحتياطية لليوم المنتهي
+            val todayDate = getCurrentDateTimeArabic().date
+            val lastMidnightDate = prefs.getString("last_midnight_backup_date", "") ?: ""
+            if (lastMidnightDate.isNotBlank() && lastMidnightDate != todayDate) {
+                _selectedSheetDate.value = todayDate
+                performSilentAutoBackup()
+            }
+            prefs.edit().putString("last_midnight_backup_date", todayDate).apply()
+        }
+        startMidnightEndOfDayBackupScheduler()
+    }
+
+    /**
+     * جدولة النسخ الاحتياطي اليومي التلقائي في نهاية اليوم الساعة 12:00 منتصف الليل تماماً
+     * مع بدء سجلات جديدة لليوم التالي ورفع النسخة الاحتياطية فوراً
+     */
+    private fun startMidnightEndOfDayBackupScheduler() {
+        viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val nowCal = java.util.Calendar.getInstance()
+                val nextMidnight = (nowCal.clone() as java.util.Calendar).apply {
+                    add(java.util.Calendar.DAY_OF_YEAR, 1)
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 50)
+                }
+                val millisToMidnight = (nextMidnight.timeInMillis - nowCal.timeInMillis).coerceAtLeast(1_000L)
+                delay(millisToMidnight)
+                val newDayDt = getCurrentDateTimeArabic()
+                onDayRolloverCheck(newDayDt.date)
+            }
+        }
+    }
+
+    fun onDayRolloverCheck(currentDate: String) {
+        if (currentDate.isNotBlank() && currentDate != trackedActiveDayDate) {
+            trackedActiveDayDate = currentDate
+            _selectedSheetDate.value = currentDate
+            prefs.edit().putString("last_midnight_backup_date", currentDate).apply()
+            viewModelScope.launch(Dispatchers.IO) {
+                performSilentAutoBackup()
+            }
         }
     }
 
@@ -257,26 +314,86 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         }
         _selectedProductKey.value = product.key
         _unitPriceInput.value = if (product.price > 0) product.price.cleanNum() else ""
+        _entryValidationAlert.value = null
+        _highlightMissingPrice.value = false
     }
 
-    fun setMajorQtyInput(value: String) { _majorQtyInput.value = value }
-    fun setMinorQtyInput(value: String) { _minorQtyInput.value = value }
+    fun setMajorQtyInput(value: String) {
+        // منع الإدخال السالب نهائياً
+        val sanitized = value.replace("-", "")
+        _majorQtyInput.value = sanitized
+        _entryValidationAlert.value = null
+    }
+
+    fun setMinorQtyInput(value: String) {
+        // منع الإدخال السالب نهائياً
+        val sanitized = value.replace("-", "")
+        _minorQtyInput.value = sanitized
+        _entryValidationAlert.value = null
+    }
 
     fun addQuickMajorQty(delta: Double) {
-        val next = LedgerCalculator.addStock(_majorQtyInput.value.toDoubleOrNull() ?: 0.0, delta).coerceAtLeast(0.0)
+        if (delta <= 0.0) return
+        val prod = products.value.find { it.key == _selectedProductKey.value } ?: products.value.firstOrNull()
+        if (prod != null && prod.stock <= 0.0) {
+            _entryValidationAlert.value = "لا يمكن: هذا المنتج غير متوفر في المخزن (المتوفر: 0 ${prod.majorUnit})"
+            return
+        }
+        val currentMaj = (_majorQtyInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        val next = LedgerCalculator.addStock(currentMaj, delta).coerceAtLeast(0.0)
+        if (prod != null) {
+            val validation = CartCalculatorHelper.evaluateProductEntryValidation(
+                product = prod,
+                cart = _cartItems.value,
+                majorStr = next.cleanNum(),
+                minorStr = _minorQtyInput.value,
+                priceStr = _unitPriceInput.value
+            )
+            if (validation.isOutOfStock || validation.isInsufficientStock) {
+                _entryValidationAlert.value = validation.stockErrorMessage
+                return
+            }
+        }
+        _entryValidationAlert.value = null
         _majorQtyInput.value = if (next > 0) next.cleanNum() else ""
     }
 
     fun addQuickMinorQty(delta: Double) {
-        val next = LedgerCalculator.addStock(_minorQtyInput.value.toDoubleOrNull() ?: 0.0, delta).coerceAtLeast(0.0)
+        if (delta <= 0.0) return
+        val prod = products.value.find { it.key == _selectedProductKey.value } ?: products.value.firstOrNull()
+        if (prod != null && prod.stock <= 0.0) {
+            _entryValidationAlert.value = "لا يمكن: هذا المنتج غير متوفر في المخزن (المتوفر: 0 ${prod.majorUnit})"
+            return
+        }
+        val currentMin = (_minorQtyInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        val next = LedgerCalculator.addStock(currentMin, delta).coerceAtLeast(0.0)
+        if (prod != null) {
+            val validation = CartCalculatorHelper.evaluateProductEntryValidation(
+                product = prod,
+                cart = _cartItems.value,
+                majorStr = _majorQtyInput.value,
+                minorStr = next.cleanNum(),
+                priceStr = _unitPriceInput.value
+            )
+            if (validation.isOutOfStock || validation.isInsufficientStock) {
+                _entryValidationAlert.value = validation.stockErrorMessage
+                return
+            }
+        }
+        _entryValidationAlert.value = null
         _minorQtyInput.value = if (next > 0) next.cleanNum() else ""
     }
 
     fun setUnitPriceInput(value: String) {
-        _unitPriceInput.value = value
-        val pVal = value.toDoubleOrNull()?.let { LedgerCalculator.roundMoney(it) }
+        val sanitized = value.replace("-", "")
+        _unitPriceInput.value = sanitized
+        val pVal = sanitized.toDoubleOrNull()?.let { LedgerCalculator.roundMoney(it) }
         val key = _selectedProductKey.value
         if (pVal != null && pVal > 0.0) {
+            _highlightMissingPrice.value = false
+            if (_entryValidationAlert.value == "أدخل سعر الصنف أولاً") {
+                _entryValidationAlert.value = null
+            }
             val prod = products.value.find { it.key == key }
             if (prod != null && prod.price != pVal) {
                 viewModelScope.launch(Dispatchers.IO) { dao.upsertProduct(prod.copy(price = pVal)) }
@@ -284,19 +401,61 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    /**
+     * تبديل حر وسلس بين طرق السداد الثلاث (0 = نقد كامل، 1 = مسلم جزء / آجل، 2 = سداد دين سابق)
+     * بغض النظر عن الحقل الذي يحمل التركيز حالياً
+     */
+    fun selectPaymentMethod(option: Int, netInvoiceSubtotal: Double) {
+        val prevOption = _selectedPaymentOption.value
+        _selectedPaymentOption.value = option
+        when (option) {
+            0 -> {
+                _isPrevDebtPaidModel.value = false
+                val total = LedgerCalculator.roundMoney(netInvoiceSubtotal.coerceAtLeast(0.0))
+                _paidInput.value = if (total > 0.0) total.cleanNum() else ""
+            }
+            1 -> {
+                _isPrevDebtPaidModel.value = (_previousDebtInput.value.toDoubleOrNull() ?: 0.0) > 0.0
+                val fullClean = LedgerCalculator.roundMoney(netInvoiceSubtotal.coerceAtLeast(0.0)).cleanNum()
+                if (prevOption == 0 && (_paidInput.value == fullClean || _paidInput.value == "0")) {
+                    _paidInput.value = ""
+                }
+            }
+            2 -> {
+                _isPrevDebtPaidModel.value = true
+            }
+        }
+    }
+
+    fun syncCashFullPaymentIfSelected(netInvoiceSubtotal: Double) {
+        if (_selectedPaymentOption.value == 0) {
+            val total = LedgerCalculator.roundMoney(netInvoiceSubtotal.coerceAtLeast(0.0))
+            val expected = if (total > 0.0) total.cleanNum() else ""
+            if (_paidInput.value != expected) {
+                _paidInput.value = expected
+            }
+        }
+    }
+
     fun setPreviousDebtInput(value: String) {
-        _previousDebtInput.value = value
-        _isPrevDebtPaidModel.value = (value.toDoubleOrNull() ?: 0.0) > 0.0
+        val sanitized = value.replace("-", "")
+        _previousDebtInput.value = sanitized
+        val hasDebt = (sanitized.toDoubleOrNull() ?: 0.0) > 0.0
+        _isPrevDebtPaidModel.value = hasDebt || _selectedPaymentOption.value == 2
     }
 
     fun applyCashFullPaymentModel(netInvoiceSubtotal: Double) {
-        _isPrevDebtPaidModel.value = false
-        val total = LedgerCalculator.roundMoney(netInvoiceSubtotal.coerceAtLeast(0.0))
-        _paidInput.value = if (total > 0) total.cleanNum() else "0"
+        selectPaymentMethod(0, netInvoiceSubtotal)
     }
 
-    fun setDiscountInput(value: String) { _discountInput.value = value }
-    fun setPaidInput(value: String) { _paidInput.value = value }
+    fun setDiscountInput(value: String) {
+        _discountInput.value = value.replace("-", "")
+    }
+
+    fun setPaidInput(value: String) {
+        val sanitized = value.replace("-", "")
+        _paidInput.value = sanitized
+    }
 
     fun saveManagerPhoneQuickly(phone: String) {
         val clean = phone.trim()
@@ -315,7 +474,7 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
                 minorUnit = newMinorUnit.trim(),
                 factor = if (newFactor > 0) newFactor else 2.0,
                 price = LedgerCalculator.roundMoney(newPrice.coerceAtLeast(0.0)),
-                stock = LedgerCalculator.roundStock(newStock)
+                stock = LedgerCalculator.roundStock(newStock.coerceAtLeast(0.0))
             )
             dao.upsertProduct(updated)
             if (_selectedProductKey.value == updated.key) {
@@ -332,7 +491,7 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
             val key = "custom_${System.currentTimeMillis()}"
             val sortOrder = (dao.getAllProducts().maxOfOrNull { it.sortOrder } ?: 16) + 1
             val cleanPrice = LedgerCalculator.roundMoney(price.coerceAtLeast(0.0))
-            val cleanStock = LedgerCalculator.roundStock(stock)
+            val cleanStock = LedgerCalculator.roundStock(stock.coerceAtLeast(0.0))
             val newProd = ProductEntity(
                 key = key, name = cleanName, majorUnit = majorUnit.trim().ifBlank { "كيلو" },
                 minorUnit = minorUnit.trim(), factor = if (factor > 0) factor else 2.0,
@@ -369,24 +528,49 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         cart: List<CartItemUi>, allProducts: List<ProductEntity>, selectedKey: String, majorStr: String, minorStr: String, priceStr: String
     ): List<CartItemUi> = CartCalculatorHelper.getEffectiveCartItems(cart, allProducts, selectedKey, majorStr, minorStr, priceStr)
 
-    fun addOrUpdateCurrentItemInCart(autoDefaultToOne: Boolean = true) {
-        val prod = products.value.find { it.key == _selectedProductKey.value } ?: products.value.firstOrNull() ?: return
-        var maj = _majorQtyInput.value.toDoubleOrNull() ?: 0.0
-        val min = if (prod.minorUnit.isNotBlank()) (_minorQtyInput.value.toDoubleOrNull() ?: 0.0) else 0.0
+    fun addOrUpdateCurrentItemInCart(autoDefaultToOne: Boolean = true): Boolean {
+        val prod = products.value.find { it.key == _selectedProductKey.value } ?: products.value.firstOrNull() ?: return false
+        var maj = (_majorQtyInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        val min = if (prod.minorUnit.isNotBlank()) (_minorQtyInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0) else 0.0
         if (maj <= 0.0 && min <= 0.0) {
-            if (autoDefaultToOne) maj = 1.0 else return
+            if (autoDefaultToOne) maj = 1.0 else return false
         }
+
+        val validation = CartCalculatorHelper.evaluateProductEntryValidation(
+            product = prod,
+            cart = _cartItems.value,
+            majorStr = maj.cleanNum(),
+            minorStr = min.cleanNum(),
+            priceStr = _unitPriceInput.value
+        )
+
+        if (validation.isOutOfStock || validation.isInsufficientStock) {
+            _entryValidationAlert.value = validation.stockErrorMessage
+                ?: "لا يمكن: هذا المنتج غير متوفر أو الكمية غير كافية"
+            return false
+        }
+
         val price = LedgerCalculator.roundMoney(_unitPriceInput.value.toDoubleOrNull() ?: prod.price)
-        if (price > 0.0 && price != prod.price) {
+        if (price <= 0.0) {
+            _highlightMissingPrice.value = true
+            _entryValidationAlert.value = "أدخل سعر الصنف أولاً"
+            return false
+        }
+
+        if (price != prod.price) {
             viewModelScope.launch(Dispatchers.IO) { dao.upsertProduct(prod.copy(price = price)) }
         }
+        _highlightMissingPrice.value = false
+        _entryValidationAlert.value = null
         _cartItems.value = CartCalculatorHelper.mergeItemIntoCartList(_cartItems.value, prod, maj, min, price)
         _majorQtyInput.value = ""
         _minorQtyInput.value = ""
+        return true
     }
 
     fun removeCartItem(productKey: String) {
         _cartItems.value = _cartItems.value.filterNot { it.productKey == productKey }
+        _entryValidationAlert.value = null
     }
 
     fun clearCartAndResetPos() {
@@ -397,23 +581,84 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         _minorQtyInput.value = ""
         _previousDebtInput.value = ""
         _isPrevDebtPaidModel.value = false
+        _selectedPaymentOption.value = 1
         _discountInput.value = ""
         _paidInput.value = ""
+        _entryValidationAlert.value = null
+        _highlightMissingPrice.value = false
     }
 
     fun saveAndShareInvoiceImmediately(context: Context, destination: InvoiceShareDestination) {
-        if ((_majorQtyInput.value.toDoubleOrNull() ?: 0.0) > 0.0 || (_minorQtyInput.value.toDoubleOrNull() ?: 0.0) > 0.0) {
-            addOrUpdateCurrentItemInCart(autoDefaultToOne = false)
+        val typedMaj = (_majorQtyInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        val typedMin = (_minorQtyInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        if (typedMaj > 0.0 || typedMin > 0.0) {
+            val added = addOrUpdateCurrentItemInCart(autoDefaultToOne = false)
+            if (!added) {
+                val msg = _entryValidationAlert.value ?: "لا يمكن إضافة الصنف: تحقق من توفر الكمية والسعر أولاً"
+                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                return
+            }
         }
+
         val currentCart = _cartItems.value
-        val prevDebt = _previousDebtInput.value.toDoubleOrNull() ?: 0.0
-        val discount = _discountInput.value.toDoubleOrNull() ?: 0.0
-        val paid = _paidInput.value.toDoubleOrNull() ?: 0.0
+        val prevDebt = (_previousDebtInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        val discount = (_discountInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
+        val paid = (_paidInput.value.toDoubleOrNull() ?: 0.0).coerceAtLeast(0.0)
         val custName = _customerNameInput.value.trim().ifBlank { "عميل نقدي" }
         val custPhone = _customerPhoneInput.value.trim()
 
-        if (currentCart.isEmpty() && prevDebt <= 0.0 && paid <= 0.0) {
-            Toast.makeText(context, "أدخل كمية الصنف أو المبلغ أولاً", Toast.LENGTH_SHORT).show()
+        // منع إصدار فاتورة بدون أصناف وبدون سداد دين سابق (منع الفاتورة الصفرية تماماً)
+        if (currentCart.isEmpty() && prevDebt <= 0.0) {
+            val selectedProd = products.value.find { it.key == _selectedProductKey.value } ?: products.value.firstOrNull()
+            if (selectedProd != null && selectedProd.stock <= 0.0) {
+                _entryValidationAlert.value = "لا يمكن: هذا المنتج غير متوفر في المخزن (المتوفر: 0 ${selectedProd.majorUnit})"
+            } else if (selectedProd != null && (_unitPriceInput.value.toDoubleOrNull() ?: selectedProd.price) <= 0.0) {
+                _highlightMissingPrice.value = true
+                _entryValidationAlert.value = "أدخل سعر الصنف أولاً"
+            } else {
+                _entryValidationAlert.value = "لا يمكن إصدار فاتورة صفرية بدون أصناف أو بيانات"
+            }
+            Toast.makeText(context, _entryValidationAlert.value ?: "أدخل كمية الصنف أولاً", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // التحقق الصارم من توفر كميات جميع الأصناف في المخزن وعدم وجود أي صنف بسعر صفر أو كمية سالبة
+        val productsMap = products.value.associateBy { it.key }
+        for (item in currentCart) {
+            if (item.majorUnitPrice <= 0.0 || item.total <= 0.0) {
+                _highlightMissingPrice.value = true
+                _entryValidationAlert.value = "أدخل سعر الصنف (${item.productName}) أولاً"
+                Toast.makeText(context, "أدخل سعر الصنف (${item.productName}) أولاً", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val prod = productsMap[item.productKey]
+            val factor = if ((prod?.factor ?: item.factor) > 0.0) (prod?.factor ?: item.factor) else 2.0
+            val hasMinor = (prod?.minorUnit ?: item.minorUnit).isNotBlank() && factor > 0.0
+            val reqEq = LedgerCalculator.computeMajorEquivalent(item.majorQty, item.minorQty, factor, hasMinor)
+            if (reqEq <= 0.0) {
+                Toast.makeText(context, "لا يمكن إصدار فاتورة بكمية صفر للصنف (${item.productName})", Toast.LENGTH_SHORT).show()
+                return
+            }
+            if (prod == null || prod.stock <= 0.0 || reqEq > prod.stock + 1e-6) {
+                val availStr = if (prod != null) LedgerCalculator.formatStockMajorMinorArabic(prod.stock.coerceAtLeast(0.0), prod) else "0"
+                val err = "لا يمكن: الكمية غير متوفرة للصنف (${item.productName} - المتوفر: $availStr)"
+                _entryValidationAlert.value = err
+                Toast.makeText(context, err, Toast.LENGTH_SHORT).show()
+                return
+            }
+        }
+
+        val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(
+            rawItemsTotal = CartCalculatorHelper.sumCartTotals(currentCart),
+            discount = discount,
+            paidCash = paid,
+            previousDebtPaid = prevDebt
+        )
+
+        // منع الفاتورة الصفرية نهائياً
+        if (acc.netInvoiceSubtotal <= 0.0 && acc.previousDebtPaid <= 0.0) {
+            _entryValidationAlert.value = "لا يمكن إصدار فاتورة بقيمة صفر"
+            Toast.makeText(context, "لا يمكن إصدار فاتورة بقيمة صفر", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -423,12 +668,6 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         _salesCounter.value = nextCounter
         prefs.edit().putInt("sales_counter", nextCounter).apply()
 
-        val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(
-            rawItemsTotal = CartCalculatorHelper.sumCartTotals(currentCart),
-            discount = discount,
-            paidCash = paid,
-            previousDebtPaid = prevDebt
-        )
         val cur = _currency.value
         val uName = _userName.value
 
@@ -450,12 +689,15 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
                     userName = uName
                 )
             }
-            // فتح الواتساب أو المشاركة فوراً دون انتظار النسخ الاحتياطي الخلفي
+            // فتح الواتساب أو المشاركة أو الحفظ المباشر فوراً دون انتظار النسخ الاحتياطي الخلفي
             withContext(Dispatchers.Main) {
                 _lastSavedInvoice.value = invoiceEntity
                 _selectedSheetDate.value = dt.date
                 clearCartAndResetPos()
                 when (destination) {
+                    InvoiceShareDestination.SAVE_ONLY -> {
+                        Toast.makeText(context, "تم حفظ الفاتورة ($invNum) بنجاح ✓", Toast.LENGTH_SHORT).show()
+                    }
                     InvoiceShareDestination.CUSTOMER_WHATSAPP -> openWhatsAppDirectOrShare(context, invoiceEntity.whatsappText, invoiceEntity.customerPhone, uName)
                     InvoiceShareDestination.MANAGER_WHATSAPP -> openWhatsAppDirectOrShare(context, invoiceEntity.managerWhatsappText, _managerPhone.value, uName)
                     InvoiceShareDestination.PDF_SHARE -> {
@@ -474,10 +716,18 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun saveSupplyBatchToManagerWhatsApp(context: Context, productKey: String, majorQty: Double, minorQty: Double, notes: String) {
+    fun saveSupplyBatchToManagerWhatsApp(
+        context: Context,
+        productKey: String,
+        majorQty: Double,
+        minorQty: Double,
+        notes: String,
+        shareToWhatsApp: Boolean = true
+    ) {
         val prod = products.value.find { it.key == productKey } ?: return
-        val cleanMin = if (prod.minorUnit.isNotBlank()) minorQty else 0.0
-        if (majorQty <= 0.0 && cleanMin <= 0.0) {
+        val cleanMaj = majorQty.coerceAtLeast(0.0)
+        val cleanMin = if (prod.minorUnit.isNotBlank()) minorQty.coerceAtLeast(0.0) else 0.0
+        if (cleanMaj <= 0.0 && cleanMin <= 0.0) {
             Toast.makeText(context, "أدخل الكمية الموردة أولاً", Toast.LENGTH_SHORT).show()
             return
         }
@@ -490,11 +740,15 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
 
         viewModelScope.launch(Dispatchers.IO) {
             val batch = db.withTransaction {
-                TradeRepositoryOperations.createAndPersistSupplyBatch(dao, prod, batchNum, dt, majorQty, cleanMin, notes, uName)
+                TradeRepositoryOperations.createAndPersistSupplyBatch(dao, prod, batchNum, dt, cleanMaj, cleanMin, notes, uName)
             }
             withContext(Dispatchers.Main) {
                 _selectedSheetDate.value = dt.date
-                openWhatsAppDirectOrShare(context, batch.whatsappText, _managerPhone.value, uName)
+                if (shareToWhatsApp) {
+                    openWhatsAppDirectOrShare(context, batch.whatsappText, _managerPhone.value, uName)
+                } else {
+                    Toast.makeText(context, "تم حفظ التوريد ($batchNum) بنجاح ✓", Toast.LENGTH_SHORT).show()
+                }
             }
             scheduleSilentAutoBackup()
         }

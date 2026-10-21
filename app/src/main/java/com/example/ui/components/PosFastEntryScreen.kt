@@ -66,6 +66,10 @@ fun PosFastEntryScreen(
     var isFinancialFieldFocused by remember { mutableStateOf(false) }
 
     val customerPhoneInput by viewModel.customerPhoneInput.collectAsStateWithLifecycle()
+    val selectedPaymentOption by viewModel.selectedPaymentOption.collectAsStateWithLifecycle()
+    val entryValidationAlert by viewModel.entryValidationAlert.collectAsStateWithLifecycle()
+    val highlightMissingPrice by viewModel.highlightMissingPrice.collectAsStateWithLifecycle()
+
     val launchCustomerContactPicker = rememberContactPickerLauncher { picked ->
         viewModel.onCustomerContactPicked(context, picked.name, picked.phone)
         majorQtyFocus.requestFocus()
@@ -164,10 +168,13 @@ fun PosFastEntryScreen(
                         PosDirectQuantityEntryCard(
                             viewModel = viewModel,
                             selectedProduct = selectedProduct,
+                            cartItems = cartItems,
                             majorQtyInput = majorQtyInput,
                             minorQtyInput = minorQtyInput,
                             unitPriceInput = unitPriceInput,
                             showPriceField = showPriceField,
+                            entryValidationAlert = entryValidationAlert,
+                            highlightMissingPrice = highlightMissingPrice,
                             onRequestEditSavedPrice = { isEditingSavedPrice = true },
                             onFinishEditSavedPrice = { isEditingSavedPrice = false },
                             majorQtyFocus = majorQtyFocus,
@@ -205,6 +212,7 @@ fun PosFastEntryScreen(
                         paidInput = paidInput,
                         discountInput = discountInput,
                         previousDebtInput = previousDebtInput,
+                        selectedPaymentOption = selectedPaymentOption,
                         paidVal = paidVal,
                         prevDebtVal = prevDebtVal,
                         remaining = remaining,
@@ -263,10 +271,13 @@ fun PosFastEntryScreen(
                     PosDirectQuantityEntryCard(
                         viewModel = viewModel,
                         selectedProduct = selectedProduct,
+                        cartItems = cartItems,
                         majorQtyInput = majorQtyInput,
                         minorQtyInput = minorQtyInput,
                         unitPriceInput = unitPriceInput,
                         showPriceField = showPriceField,
+                        entryValidationAlert = entryValidationAlert,
+                        highlightMissingPrice = highlightMissingPrice,
                         onRequestEditSavedPrice = { isEditingSavedPrice = true },
                         onFinishEditSavedPrice = { isEditingSavedPrice = false },
                         majorQtyFocus = majorQtyFocus,
@@ -298,6 +309,7 @@ fun PosFastEntryScreen(
                     paidInput = paidInput,
                     discountInput = discountInput,
                     previousDebtInput = previousDebtInput,
+                    selectedPaymentOption = selectedPaymentOption,
                     paidVal = paidVal,
                     prevDebtVal = prevDebtVal,
                     remaining = remaining,

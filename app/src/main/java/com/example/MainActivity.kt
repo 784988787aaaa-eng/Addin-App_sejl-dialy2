@@ -89,7 +89,9 @@ fun SmartTradeMainApp(viewModel: SmartTradeViewModel = viewModel()) {
     var currentDateTime by remember { mutableStateOf(getCurrentDateTimeArabic()) }
     LaunchedEffect(Unit) {
         while (true) {
-            currentDateTime = getCurrentDateTimeArabic()
+            val dt = getCurrentDateTimeArabic()
+            currentDateTime = dt
+            viewModel.onDayRolloverCheck(dt.date)
             delay(15_000L)
         }
     }
@@ -157,6 +159,9 @@ fun SmartTradeMainApp(viewModel: SmartTradeViewModel = viewModel()) {
                 PinnedSaveAndShareBottomBar(
                     nextInvoiceNumber = "A$salesCounter",
                     lastSavedInvoiceNumber = lastSavedInvoice?.invoiceNumber,
+                    onSaveOnly = {
+                        viewModel.saveAndShareInvoiceImmediately(context, InvoiceShareDestination.SAVE_ONLY)
+                    },
                     onSaveAndShareToCustomer = {
                         viewModel.saveAndShareInvoiceImmediately(context, InvoiceShareDestination.CUSTOMER_WHATSAPP)
                     },
