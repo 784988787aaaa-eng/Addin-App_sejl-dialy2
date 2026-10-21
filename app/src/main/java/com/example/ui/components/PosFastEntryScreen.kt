@@ -66,6 +66,7 @@ fun PosFastEntryScreen(
     var isFinancialFieldFocused by remember { mutableStateOf(false) }
 
     val customerPhoneInput by viewModel.customerPhoneInput.collectAsStateWithLifecycle()
+    val invoiceNoteInput by viewModel.invoiceNoteInput.collectAsStateWithLifecycle()
     val selectedPaymentOption by viewModel.selectedPaymentOption.collectAsStateWithLifecycle()
     val entryValidationAlert by viewModel.entryValidationAlert.collectAsStateWithLifecycle()
     val highlightMissingPrice by viewModel.highlightMissingPrice.collectAsStateWithLifecycle()
@@ -218,6 +219,7 @@ fun PosFastEntryScreen(
                         paidInput = paidInput,
                         discountInput = discountInput,
                         previousDebtInput = previousDebtInput,
+                        invoiceNoteInput = invoiceNoteInput,
                         selectedPaymentOption = selectedPaymentOption,
                         paidVal = paidVal,
                         prevDebtVal = prevDebtVal,
@@ -308,13 +310,14 @@ fun PosFastEntryScreen(
                     )
                 }
 
-                // 5. منطقة الملخص المالي وإدخال الدفعات والخصم
+                // 5. منطقة الملخص المالي وإدخال الدفعات والخصم والملاحظات
                 PosFinancialEntryAndPreviewCard(
                     viewModel = viewModel,
                     netInvoiceSubtotal = netInvoiceSubtotal,
                     paidInput = paidInput,
                     discountInput = discountInput,
                     previousDebtInput = previousDebtInput,
+                    invoiceNoteInput = invoiceNoteInput,
                     selectedPaymentOption = selectedPaymentOption,
                     paidVal = paidVal,
                     prevDebtVal = prevDebtVal,

@@ -32,8 +32,10 @@ object TradeRepositoryOperations {
         paid: Double,
         remaining: Double,
         currency: String,
-        userName: String = ""
+        userName: String = "",
+        invoiceNote: String = ""
     ): SaleInvoiceEntity {
+        val cleanNote = invoiceNote.trim()
         val records = currentCart.map {
             InvoiceItemRecord(
                 key = it.productKey,
@@ -97,7 +99,8 @@ object TradeRepositoryOperations {
             paid = acc.paidCash,
             remaining = acc.remainingOnInvoice,
             currency = currency,
-            userName = userName
+            userName = userName,
+            notes = cleanNote
         )
         val managerMsg = LedgerCalculator.buildManagerInvoiceWhatsAppMessage(
             invNum = invNum,
@@ -113,7 +116,8 @@ object TradeRepositoryOperations {
             remaining = acc.remainingOnInvoice,
             currency = currency,
             updatedProductsMap = allProds,
-            userName = userName
+            userName = userName,
+            notes = cleanNote
         )
 
         val invoiceEntity = SaleInvoiceEntity(
@@ -129,7 +133,7 @@ object TradeRepositoryOperations {
             totalDue = acc.netInvoiceSubtotal,
             paid = acc.paidCash,
             remaining = acc.remainingOnInvoice,
-            suppliedGoodsNote = "",
+            suppliedGoodsNote = cleanNote,
             dayName = dt.dayName,
             date = dt.date,
             time = dt.time12h,
@@ -202,11 +206,11 @@ object TradeRepositoryOperations {
             val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(inv)
             val customerMsg = LedgerCalculator.buildCustomerWhatsAppMessage(
                 inv.invoiceNumber, inv.dayName, inv.date, inv.time,
-                cleanName, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName
+                cleanName, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName, inv.suppliedGoodsNote
             )
             val managerMsg = LedgerCalculator.buildManagerInvoiceWhatsAppMessage(
                 inv.invoiceNumber, inv.dayName, inv.date, inv.time,
-                cleanName, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName
+                cleanName, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName, inv.suppliedGoodsNote
             )
             inv.copy(
                 customerName = cleanName,
@@ -233,8 +237,10 @@ object TradeRepositoryOperations {
         newPrevDebt: Double,
         newDiscount: Double,
         currency: String,
-        userName: String
+        userName: String,
+        newNote: String = invoice.suppliedGoodsNote
     ) {
+        val cleanNote = newNote.trim()
         val items = decodeInvoiceItemsJson(invoice.itemsJson)
         val rawTotal = LedgerCalculator.sumRecordTotals(items)
         val fallbackGross = LedgerCalculator.addMoney(invoice.subtotal, invoice.discount)
@@ -252,11 +258,11 @@ object TradeRepositoryOperations {
 
         val customerMsg = LedgerCalculator.buildCustomerWhatsAppMessage(
             invoice.invoiceNumber, invoice.dayName, invoice.date, invoice.time,
-            cleanCust, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName
+            cleanCust, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName, cleanNote
         )
         val managerMsg = LedgerCalculator.buildManagerInvoiceWhatsAppMessage(
             invoice.invoiceNumber, invoice.dayName, invoice.date, invoice.time,
-            cleanCust, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName
+            cleanCust, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName, cleanNote
         )
 
         val updated = invoice.copy(
@@ -269,6 +275,7 @@ object TradeRepositoryOperations {
             isPrevDebtPaidModel = acc.previousDebtPaid > 0.0,
             discount = acc.discount,
             remaining = acc.remainingOnInvoice,
+            suppliedGoodsNote = cleanNote,
             whatsappText = customerMsg,
             managerWhatsappText = managerMsg
         )
@@ -530,11 +537,11 @@ object TradeRepositoryOperations {
             val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(inv)
             val cleanCustomerMsg = LedgerCalculator.buildCustomerWhatsAppMessage(
                 inv.invoiceNumber, inv.dayName, inv.date, inv.time, inv.customerName, items,
-                acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName
+                acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName, inv.suppliedGoodsNote
             )
             val cleanManagerMsg = LedgerCalculator.buildManagerInvoiceWhatsAppMessage(
                 inv.invoiceNumber, inv.dayName, inv.date, inv.time, inv.customerName, items,
-                acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName
+                acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName, inv.suppliedGoodsNote
             )
             if (cleanCustomerMsg != inv.whatsappText || cleanManagerMsg != inv.managerWhatsappText) {
                 inv.copy(

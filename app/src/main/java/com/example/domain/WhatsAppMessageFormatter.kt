@@ -107,7 +107,8 @@ object WhatsAppMessageFormatter {
         paid: Double,
         remaining: Double,
         currency: String,
-        userName: String = ""
+        userName: String = "",
+        notes: String = ""
     ): String = buildString {
         val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(
             rawItemsTotal = LedgerCalculator.sumRecordTotals(items),
@@ -142,6 +143,10 @@ object WhatsAppMessageFormatter {
                 appendLine("إجمالي المسلم الكلي: ${acc.totalInUserHand.cleanNum()} $currency")
             }
         }
+        val cleanNotes = notes.trim()
+        if (cleanNotes.isNotEmpty()) {
+            appendLine("ملاحظات: $cleanNotes")
+        }
         val cleanUser = userName.trim()
         if (cleanUser.isNotEmpty()) {
             appendLine("────────────────")
@@ -166,7 +171,8 @@ object WhatsAppMessageFormatter {
         remaining: Double,
         currency: String,
         updatedProductsMap: Map<String, ProductEntity>,
-        userName: String = ""
+        userName: String = "",
+        notes: String = ""
     ): String = buildString {
         val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(
             rawItemsTotal = LedgerCalculator.sumRecordTotals(items),
@@ -200,6 +206,10 @@ object WhatsAppMessageFormatter {
             if (acc.paidCash > 0) {
                 appendLine("إجمالي المستلم بيد المستخدم: ${acc.totalInUserHand.cleanNum()} $currency")
             }
+        }
+        val cleanNotes = notes.trim()
+        if (cleanNotes.isNotEmpty()) {
+            appendLine("ملاحظات: $cleanNotes")
         }
 
         if (items.isNotEmpty()) {
@@ -280,7 +290,8 @@ object WhatsAppMessageFormatter {
                 val prod = products.find { it.key == s.productKey }
                 val prevDisp = if (prod != null) LedgerCalculator.formatStockMajorMinorArabic(s.prevStock, prod) else "${s.prevStock.cleanNum()} ${s.majorUnit}"
                 val cumDisp = if (prod != null) LedgerCalculator.formatStockMajorMinorArabic(s.cumulativeStock, prod) else "${s.cumulativeStock.cleanNum()} ${s.majorUnit}"
-                appendLine("• ${s.productName} [${s.batchNumber}]: سابق ($prevDisp) + وارد (${s.enteredDisplay}) = الإجمالي ($cumDisp)")
+                val noteSuffix = if (s.notes.isNotBlank()) " — ملاحظات: ${s.notes.trim()}" else ""
+                appendLine("• ${s.productName} [${s.batchNumber}]: سابق ($prevDisp) + وارد (${s.enteredDisplay}) = الإجمالي ($cumDisp)$noteSuffix")
             }
             appendLine("────────────────")
         }
@@ -292,6 +303,9 @@ object WhatsAppMessageFormatter {
                 appendLine("${i + 1}. ${inv.customerName} [${inv.invoiceNumber}]")
                 if (itemsSummary.isNotBlank()) appendLine("   الأصناف: $itemsSummary")
                 appendLine("   إجمالي الفاتورة: ${acc.netInvoiceSubtotal.cleanNum()} | مسلم: ${acc.paidCellText} | المتبقي: ${acc.remainingOnInvoice.cleanNum()} $currency")
+                if (inv.suppliedGoodsNote.isNotBlank()) {
+                    appendLine("   ملاحظات: ${inv.suppliedGoodsNote.trim()}")
+                }
             }
             appendLine("════════════════")
             appendLine("ملخص الحسابات اليومية:")

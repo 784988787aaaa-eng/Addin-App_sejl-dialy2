@@ -662,18 +662,18 @@ object LedgerCalculator {
     fun buildCustomerWhatsAppMessage(
         invNum: String, dayName: String, date: String, time: String, customerName: String,
         items: List<InvoiceItemRecord>, subtotal: Double, prevDebt: Double, discount: Double,
-        paid: Double, remaining: Double, currency: String, userName: String = ""
+        paid: Double, remaining: Double, currency: String, userName: String = "", notes: String = ""
     ): String = WhatsAppMessageFormatter.buildCustomerWhatsAppMessage(
-        invNum, dayName, date, time, customerName, items, subtotal, prevDebt, discount, paid, remaining, currency, userName
+        invNum, dayName, date, time, customerName, items, subtotal, prevDebt, discount, paid, remaining, currency, userName, notes
     )
 
     fun buildManagerInvoiceWhatsAppMessage(
         invNum: String, dayName: String, date: String, time: String, customerName: String,
         items: List<InvoiceItemRecord>, subtotal: Double, prevDebt: Double, discount: Double,
         paid: Double, remaining: Double, currency: String, updatedProductsMap: Map<String, ProductEntity>,
-        userName: String = ""
+        userName: String = "", notes: String = ""
     ): String = WhatsAppMessageFormatter.buildManagerInvoiceWhatsAppMessage(
-        invNum, dayName, date, time, customerName, items, subtotal, prevDebt, discount, paid, remaining, currency, updatedProductsMap, userName
+        invNum, dayName, date, time, customerName, items, subtotal, prevDebt, discount, paid, remaining, currency, updatedProductsMap, userName, notes
     )
 
     fun buildManagerSupplyWhatsAppMessage(

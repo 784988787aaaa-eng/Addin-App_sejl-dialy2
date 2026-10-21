@@ -178,6 +178,9 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
     private val _paidInput = MutableStateFlow("")
     val paidInput: StateFlow<String> = _paidInput.asStateFlow()
 
+    private val _invoiceNoteInput = MutableStateFlow("")
+    val invoiceNoteInput: StateFlow<String> = _invoiceNoteInput.asStateFlow()
+
     // 0 = نقد كامل (الخيار المفعل الافتراضي) | 1 = مسلم جزء / آجل | 2 = سداد دين سابق
     private val _selectedPaymentOption = MutableStateFlow(0)
     val selectedPaymentOption: StateFlow<Int> = _selectedPaymentOption.asStateFlow()
@@ -199,9 +202,9 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
             if (dao.getAllProducts().isEmpty()) {
                 dao.upsertProducts(getInitialPaperCommodities())
             }
-            if (!prefs.getBoolean("direct_msg_migrated_v7", false)) {
+            if (!prefs.getBoolean("direct_msg_migrated_v8", false)) {
                 TradeRepositoryOperations.upgradeLegacyMessagesToDirectFormat(dao, _currency.value, _userName.value)
-                prefs.edit().putBoolean("direct_msg_migrated_v7", true).apply()
+                prefs.edit().putBoolean("direct_msg_migrated_v8", true).apply()
             }
             try {
                 val signedIn = GoogleDriveCloudBackupManager.getCurrentSignedInProfile(application)
@@ -457,6 +460,10 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         _paidInput.value = sanitized
     }
 
+    fun setInvoiceNoteInput(value: String) {
+        _invoiceNoteInput.value = value
+    }
+
     fun saveManagerPhoneQuickly(phone: String) {
         val clean = phone.trim()
         _managerPhone.value = clean
@@ -584,6 +591,7 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         _selectedPaymentOption.value = 0
         _discountInput.value = ""
         _paidInput.value = ""
+        _invoiceNoteInput.value = ""
         _entryValidationAlert.value = null
         _highlightMissingPrice.value = false
     }
@@ -677,6 +685,7 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
 
         val cur = _currency.value
         val uName = _userName.value
+        val invNote = _invoiceNoteInput.value.trim()
 
         viewModelScope.launch(Dispatchers.IO) {
             val invoiceEntity = db.withTransaction {
@@ -693,7 +702,8 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
                     paid = acc.paidCash,
                     remaining = acc.remainingOnInvoice,
                     currency = cur,
-                    userName = uName
+                    userName = uName,
+                    invoiceNote = invNote
                 )
             }
             // فتح الواتساب أو المشاركة أو الحفظ المباشر فوراً دون انتظار النسخ الاحتياطي الخلفي
@@ -761,11 +771,18 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun updateInvoiceRecord(invoice: SaleInvoiceEntity, newCustomerName: String, newPaid: Double, newPrevDebt: Double, newDiscount: Double) {
+    fun updateInvoiceRecord(
+        invoice: SaleInvoiceEntity,
+        newCustomerName: String,
+        newPaid: Double,
+        newPrevDebt: Double,
+        newDiscount: Double,
+        newNote: String = invoice.suppliedGoodsNote
+    ) {
         viewModelScope.launch(Dispatchers.IO) {
             db.withTransaction {
                 TradeRepositoryOperations.updateExistingSaleInvoice(
-                    dao, invoice, newCustomerName, newPaid, newPrevDebt, newDiscount, _currency.value, _userName.value
+                    dao, invoice, newCustomerName, newPaid, newPrevDebt, newDiscount, _currency.value, _userName.value, newNote
                 )
             }
             scheduleSilentAutoBackup()

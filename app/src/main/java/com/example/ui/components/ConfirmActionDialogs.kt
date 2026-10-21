@@ -101,13 +101,14 @@ fun ConfirmActionDialog(
 @Composable
 fun EditSavedInvoiceDialog(
     invoice: SaleInvoiceEntity,
-    onConfirmSaveEdit: (String, Double, Double, Double) -> Unit,
+    onConfirmSaveEdit: (String, Double, Double, Double, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     var customerName by remember(invoice) { mutableStateOf(invoice.customerName) }
     var paidStr by remember(invoice) { mutableStateOf(if (invoice.paid > 0) invoice.paid.cleanNum() else "") }
     var prevDebtStr by remember(invoice) { mutableStateOf(if (invoice.previousDebt > 0) invoice.previousDebt.cleanNum() else "") }
     var discountStr by remember(invoice) { mutableStateOf(if (invoice.discount > 0) invoice.discount.cleanNum() else "") }
+    var notesStr by remember(invoice) { mutableStateOf(invoice.suppliedGoodsNote) }
     var showConfirmSave by remember { mutableStateOf(false) }
 
     val decodedItems = remember(invoice.itemsJson) { decodeInvoiceItemsJson(invoice.itemsJson) }
@@ -198,6 +199,13 @@ fun EditSavedInvoiceDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    OutlinedTextField(
+                        value = notesStr,
+                        onValueChange = { notesStr = it },
+                        label = { Text("بيان الفاتورة / ملاحظات (اختياري)", fontSize = 10.5.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -231,7 +239,8 @@ fun EditSavedInvoiceDialog(
                     customerName,
                     liveAcc.paidCash,
                     liveAcc.previousDebtPaid,
-                    liveAcc.discount
+                    liveAcc.discount,
+                    notesStr
                 )
                 onDismiss()
             },

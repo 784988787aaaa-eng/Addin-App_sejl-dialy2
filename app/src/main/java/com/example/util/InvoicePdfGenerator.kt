@@ -45,8 +45,10 @@ object InvoicePdfGenerator {
 
             val items = decodeInvoiceItemsJson(invoice.itemsJson)
             val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(invoice)
+            val cleanNote = invoice.suppliedGoodsNote.trim()
+            val extraNoteHeight = if (cleanNote.isNotEmpty()) 40 else 0
             val pageWidth = 595
-            val pageHeight = (520 + items.size * 30).coerceAtLeast(660)
+            val pageHeight = (520 + items.size * 30 + extraNoteHeight).coerceAtLeast(660)
 
             val pdfDocument = PdfDocument()
             val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
@@ -158,6 +160,18 @@ object InvoicePdfGenerator {
                 textPaint.color = if (isRem) AndroidColor.parseColor("#B45309") else AndroidColor.parseColor("#047857")
                 canvas.drawText(valStr, 40f, y + 18f, textPaint)
                 y += 30f
+            }
+
+            if (cleanNote.isNotEmpty()) {
+                bgPaint.color = AndroidColor.parseColor("#F8FAFC")
+                val noteRect = RectF(24f, y, (pageWidth - 24).toFloat(), y + 28f)
+                canvas.drawRoundRect(noteRect, 6f, 6f, bgPaint)
+                canvas.drawRoundRect(noteRect, 6f, 6f, borderPaint)
+                textPaint.textAlign = Paint.Align.RIGHT
+                textPaint.textSize = 11.5f
+                textPaint.color = AndroidColor.parseColor("#1E3A8A")
+                canvas.drawText("ملاحظات: $cleanNote", (pageWidth - 40).toFloat(), y + 18f, textPaint)
+                y += 34f
             }
 
             if (effectiveUser.isNotEmpty()) {

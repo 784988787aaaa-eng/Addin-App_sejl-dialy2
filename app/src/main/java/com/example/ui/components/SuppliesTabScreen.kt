@@ -386,6 +386,14 @@ fun SuppliesTabScreen(
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF047857)
                         )
+                        if (sup.notes.isNotBlank()) {
+                            Text(
+                                text = "📝 ملاحظات: ${sup.notes.trim()}",
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1E3A8A)
+                            )
+                        }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         IconButton(onClick = {

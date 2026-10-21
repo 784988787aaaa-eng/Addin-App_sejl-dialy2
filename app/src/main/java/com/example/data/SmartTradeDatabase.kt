@@ -228,7 +228,7 @@ interface SmartTradeDao {
         """
         SELECT * FROM sales_invoices
         WHERE (:filterDate = '' OR date = :filterDate)
-          AND (:query = '' OR customerName LIKE '%' || :query || '%' OR invoiceNumber LIKE '%' || :query || '%' OR date LIKE '%' || :query || '%' OR dayName LIKE '%' || :query || '%')
+          AND (:query = '' OR customerName LIKE '%' || :query || '%' OR invoiceNumber LIKE '%' || :query || '%' OR suppliedGoodsNote LIKE '%' || :query || '%' OR date LIKE '%' || :query || '%' OR dayName LIKE '%' || :query || '%')
         ORDER BY timestamp DESC
         LIMIT :limit
         """
@@ -246,7 +246,7 @@ interface SmartTradeDao {
             COALESCE(ROUND(SUM(remaining), 2), 0.0) AS totalInvoicesRemaining
         FROM sales_invoices
         WHERE (:filterDate = '' OR date = :filterDate)
-          AND (:query = '' OR customerName LIKE '%' || :query || '%' OR invoiceNumber LIKE '%' || :query || '%' OR date LIKE '%' || :query || '%' OR dayName LIKE '%' || :query || '%')
+          AND (:query = '' OR customerName LIKE '%' || :query || '%' OR invoiceNumber LIKE '%' || :query || '%' OR suppliedGoodsNote LIKE '%' || :query || '%' OR date LIKE '%' || :query || '%' OR dayName LIKE '%' || :query || '%')
         """
     )
     fun observeFilteredFinancialSummary(query: String, filterDate: String): Flow<FinancialSummaryTuple>

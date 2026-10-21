@@ -289,4 +289,59 @@ class UnifiedAccountingAndScalabilityTest {
         assertEquals(d2.endOfDayRemaining, d3.prevDayRemaining, 0.0001)
         assertEquals(20.0, d3.endOfDayRemaining, 0.0001)
     }
+
+    @Test
+    fun `test invoice notes appear in customer manager and daily ledger messages like supplies`() {
+        val prod = ProductEntity(
+            key = "khadra",
+            name = "خضرة",
+            majorUnit = "كيلو",
+            minorUnit = "",
+            factor = 2.0,
+            colorBgHex = 0xFFDCFCE7,
+            colorTextHex = 0xFF15803D,
+            borderHex = 0xFF86EFAC,
+            price = 6800.0,
+            stock = 19.0
+        )
+        val items = listOf(InvoiceItemRecord("khadra", "خضرة", "1 كيلو", 1.0, 0.0, 6800.0, 6800.0))
+        val noteText = "تسليم مع السائق محمد"
+
+        val customerMsg = LedgerCalculator.buildCustomerWhatsAppMessage(
+            invNum = "A1005",
+            dayName = "الأربعاء",
+            date = "2026-10-21",
+            time = "5:00 م",
+            customerName = "منصور قطينه",
+            items = items,
+            subtotal = 6800.0,
+            prevDebt = 0.0,
+            discount = 0.0,
+            paid = 6800.0,
+            remaining = 0.0,
+            currency = "ر.ي",
+            userName = "أنور",
+            notes = noteText
+        )
+        assertTrue(customerMsg.contains("ملاحظات: $noteText"))
+
+        val managerMsg = LedgerCalculator.buildManagerInvoiceWhatsAppMessage(
+            invNum = "A1005",
+            dayName = "الأربعاء",
+            date = "2026-10-21",
+            time = "5:00 م",
+            customerName = "منصور قطينه",
+            items = items,
+            subtotal = 6800.0,
+            prevDebt = 0.0,
+            discount = 0.0,
+            paid = 6800.0,
+            remaining = 0.0,
+            currency = "ر.ي",
+            updatedProductsMap = mapOf("khadra" to prod),
+            userName = "أنور",
+            notes = noteText
+        )
+        assertTrue(managerMsg.contains("ملاحظات: $noteText"))
+    }
 }

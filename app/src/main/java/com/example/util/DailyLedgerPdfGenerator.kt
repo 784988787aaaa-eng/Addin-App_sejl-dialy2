@@ -582,10 +582,16 @@ object DailyLedgerPdfGenerator {
             val decodedItemsMap = if (inv != null) decodeInvoiceItemsMap(inv.itemsJson) else emptyMap()
             val acc = if (inv != null) LedgerCalculator.computeUnifiedInvoiceAccounting(inv) else null
 
+            val customerCellText = when {
+                inv == null -> ""
+                inv.suppliedGoodsNote.isNotBlank() -> "${inv.customerName}\n(${inv.suppliedGoodsNote.trim()})"
+                else -> inv.customerName
+            }
+
             curX = rightEdge
             drawWrappedCell(curX, curY, colM, dataRowH, AndroidColor.parseColor("#CBD5E1"), "${globalIndex + 1}", AndroidColor.BLACK, 9.5f)
             curX -= colM
-            drawWrappedCell(curX, curY, colName, dataRowH, AndroidColor.parseColor("#E2E8F0"), inv?.customerName ?: "", AndroidColor.BLACK, 9.5f)
+            drawWrappedCell(curX, curY, colName, dataRowH, AndroidColor.parseColor("#E2E8F0"), customerCellText, AndroidColor.BLACK, 9.5f)
             curX -= colName
 
             prodCols.forEach { p ->

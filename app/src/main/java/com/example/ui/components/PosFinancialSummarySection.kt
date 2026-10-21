@@ -312,6 +312,7 @@ fun PosFinancialEntryAndPreviewCard(
     paidInput: String,
     discountInput: String,
     previousDebtInput: String,
+    invoiceNoteInput: String = "",
     selectedPaymentOption: Int,
     paidVal: Double,
     prevDebtVal: Double,
@@ -326,9 +327,11 @@ fun PosFinancialEntryAndPreviewCard(
     var isPaidFocused by remember { mutableStateOf(false) }
     var isDiscountFocused by remember { mutableStateOf(false) }
     var isPrevDebtFocused by remember { mutableStateOf(false) }
+    var isNoteFocused by remember { mutableStateOf(false) }
+    val noteFocus = remember { FocusRequester() }
 
-    LaunchedEffect(isPaidFocused, isDiscountFocused, isPrevDebtFocused) {
-        onFinancialFocusChanged(isPaidFocused || isDiscountFocused || isPrevDebtFocused)
+    LaunchedEffect(isPaidFocused, isDiscountFocused, isPrevDebtFocused, isNoteFocused) {
+        onFinancialFocusChanged(isPaidFocused || isDiscountFocused || isPrevDebtFocused || isNoteFocused)
     }
 
     LaunchedEffect(netInvoiceSubtotal, selectedPaymentOption) {
@@ -493,61 +496,97 @@ fun PosFinancialEntryAndPreviewCard(
                 )
             }
 
-            // 3. الحقل الأساسي: المسلّم نقداً للفاتورة مع مفتاح طي/عرض الحقول الإضافية في نفس السطر لتوفير الارتفاع
-            Column(
+            // 3. الصف الأساسي الذكي: المسلّم نقداً + حقل الملاحظات المباشر في نفس السطر (متاح دائماً في النقد الكامل والجزئي والدين السابق بدون أي تزاحم رأسي)
+            Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.weight(if (isNoteFocused) 0.82f else 0.95f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
                         text = "مسلّم نقداً (للفاتورة)",
-                        fontSize = 9.5.sp,
+                        fontSize = 9.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF065F46),
                         maxLines = 1
                     )
-                    Surface(
-                        color = PosUiTokens.SubtleSurface,
-                        shape = PosUiTokens.BadgeShape,
-                        border = BorderStroke(1.dp, PosUiTokens.CardBorder),
-                        modifier = Modifier.clickable { showExtraAdjustments = !showExtraAdjustments }
-                    ) {
-                        Text(
-                            text = if (showExtraAdjustments) "خيارات إضافية (الخصم وسداد دين سابق) ▴" else "خيارات إضافية (الخصم وسداد دين سابق) ▾",
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PosUiTokens.TextSecondary,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.5.dp)
-                        )
-                    }
+                    CompactInlineFieldWithCalc(
+                        value = paidInput,
+                        onValueChange = {
+                            if (selectedPaymentOption == 0 && it != netInvoiceSubtotal.cleanNum()) {
+                                viewModel.selectPaymentMethod(1, netInvoiceSubtotal)
+                            }
+                            viewModel.setPaidInput(it)
+                        },
+                        placeholder = "المبلغ المسلّم...",
+                        onOpenCalc = {
+                            if (selectedPaymentOption == 0) {
+                                viewModel.selectPaymentMethod(1, netInvoiceSubtotal)
+                            }
+                            onOpenCalculator(CalculatorTarget.PAID)
+                        },
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Next,
+                        onImeDone = { noteFocus.requestFocus() },
+                        onFocusStateChanged = { isPaidFocused = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(paidFocus)
+                            .testTag("paid_input")
+                    )
                 }
 
-                CompactInlineFieldWithCalc(
-                    value = paidInput,
-                    onValueChange = {
-                        if (selectedPaymentOption == 0 && it != netInvoiceSubtotal.cleanNum()) {
-                            viewModel.selectPaymentMethod(1, netInvoiceSubtotal)
+                Column(
+                    modifier = Modifier.weight(if (isNoteFocused) 1.28f else 1.15f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ملاحظات",
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = PosUiTokens.PrimaryBrand,
+                            maxLines = 1
+                        )
+                        Surface(
+                            color = PosUiTokens.SubtleSurface,
+                            shape = PosUiTokens.BadgeShape,
+                            border = BorderStroke(1.dp, PosUiTokens.CardBorder),
+                            modifier = Modifier.clickable { showExtraAdjustments = !showExtraAdjustments }
+                        ) {
+                            Text(
+                                text = if (showExtraAdjustments) "خصم / دين سابق ▴" else "خصم / دين سابق ▾",
+                                fontSize = 8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = PosUiTokens.TextSecondary,
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
                         }
-                        viewModel.setPaidInput(it)
-                    },
-                    placeholder = "أدخل المبلغ المسلّم نقداً...",
-                    onOpenCalc = {
-                        if (selectedPaymentOption == 0) {
-                            viewModel.selectPaymentMethod(1, netInvoiceSubtotal)
-                        }
-                        onOpenCalculator(CalculatorTarget.PAID)
-                    },
-                    onImeDone = { focusManager.clearFocus() },
-                    onFocusStateChanged = { isPaidFocused = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(paidFocus)
-                        .testTag("paid_input")
-                )
+                    }
+
+                    CompactInlineField(
+                        value = invoiceNoteInput,
+                        onValueChange = { viewModel.setInvoiceNoteInput(it) },
+                        placeholder = "ملاحظة للفاتورة والكشف...",
+                        leadingIcon = "📝",
+                        keyboardType = androidx.compose.ui.text.input.KeyboardType.Text,
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                        onImeAction = { focusManager.clearFocus() },
+                        onFocusStateChanged = { isNoteFocused = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(noteFocus)
+                            .testTag("invoice_note_input")
+                    )
+                }
             }
 
             // 4. صف الحقول الإضافية (الخصم + سداد دين سابق) مباشرة بدون إطار داخلي مزدوج لمنع التكدس الرأسي
@@ -604,7 +643,7 @@ fun PosFinancialEntryAndPreviewCard(
                                 viewModel.selectPaymentMethod(2, netInvoiceSubtotal)
                                 onOpenCalculator(CalculatorTarget.PREV_DEBT)
                             },
-                            onImeDone = { focusManager.clearFocus() },
+                            onImeDone = { noteFocus.requestFocus() },
                             onFocusStateChanged = { isPrevDebtFocused = it },
                             modifier = Modifier
                                 .fillMaxWidth()

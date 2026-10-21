@@ -136,6 +136,11 @@ fun ColumnScope.DailyLedgerTableGrid(
                             if (inv != null) decodeInvoiceItemsMap(inv.itemsJson) else emptyMap()
                         }
 
+                        val customerCellText = when {
+                            inv == null -> ""
+                            inv.suppliedGoodsNote.isNotBlank() -> "${inv.customerName}\n(${inv.suppliedGoodsNote.trim()})"
+                            else -> inv.customerName
+                        }
                         Row(
                             modifier = Modifier
                                 .height(IntrinsicSize.Min)
@@ -145,7 +150,7 @@ fun ColumnScope.DailyLedgerTableGrid(
                                 )
                         ) {
                             LedgerCell("${globalIdx + 1}", colM, Color(0xFFCBD5E1), Color(0xFF0F172A), isBold = true)
-                            LedgerCell(inv?.customerName ?: "", colName, Color(0xFFE2E8F0), Color(0xFF0F172A), isBold = true)
+                            LedgerCell(customerCellText, colName, Color(0xFFE2E8F0), Color(0xFF0F172A), isBold = true)
                             prodCols.forEach { p ->
                                 val item = decodedItemsMap[p.key]
                                 LedgerCell(

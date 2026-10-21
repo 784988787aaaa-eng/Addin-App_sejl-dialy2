@@ -127,7 +127,7 @@ fun UnifiedRecordsScreen(
                             searchQuery = it
                             pageLimit = 150
                         },
-                        placeholder = { Text("ابحث باسم العميل، رقم الفاتورة، اليوم، أو التاريخ...", fontSize = 10.5.sp) },
+                        placeholder = { Text("ابحث باسم العميل، رقم الفاتورة، الملاحظات، أو التاريخ...", fontSize = 10.5.sp) },
                         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
@@ -278,8 +278,8 @@ fun UnifiedRecordsScreen(
     pendingEditInvoice?.let { inv ->
         EditSavedInvoiceDialog(
             invoice = inv,
-            onConfirmSaveEdit = { newCust, newPaid, newPrevDebt, newDiscount ->
-                viewModel.updateInvoiceRecord(inv, newCust, newPaid, newPrevDebt, newDiscount)
+            onConfirmSaveEdit = { newCust, newPaid, newPrevDebt, newDiscount, newNote ->
+                viewModel.updateInvoiceRecord(inv, newCust, newPaid, newPrevDebt, newDiscount, newNote)
             },
             onDismiss = { pendingEditInvoice = null }
         )
@@ -408,6 +408,15 @@ private fun InvoiceRecordCard(
                     color = Color(0xFF475569),
                     fontSize = 10.5.sp,
                     fontWeight = FontWeight.Medium
+                )
+            }
+
+            if (inv.suppliedGoodsNote.isNotBlank()) {
+                Text(
+                    text = "📝 ملاحظات: ${inv.suppliedGoodsNote.trim()}",
+                    color = Color(0xFF1E3A8A),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
