@@ -136,11 +136,7 @@ fun ColumnScope.DailyLedgerTableGrid(
                             if (inv != null) decodeInvoiceItemsMap(inv.itemsJson) else emptyMap()
                         }
 
-                        val customerCellText = when {
-                            inv == null -> ""
-                            inv.suppliedGoodsNote.isNotBlank() -> "${inv.customerName}\n(${inv.suppliedGoodsNote.trim()})"
-                            else -> inv.customerName
-                        }
+                        val customerCellText = inv?.customerName ?: ""
                         Row(
                             modifier = Modifier
                                 .height(IntrinsicSize.Min)
@@ -161,10 +157,11 @@ fun ColumnScope.DailyLedgerTableGrid(
                                     isBold = item != null
                                 )
                             }
+                            val noteStr = if (!inv?.suppliedGoodsNote.isNullOrBlank()) "\n(${inv.suppliedGoodsNote.trim()})" else ""
                             val invTotalStr = when {
-                                acc == null || acc.netInvoiceSubtotal <= 0.0 -> ""
-                                acc.discount > 0.0 -> "${acc.netInvoiceSubtotal.cleanNum()}\n(خصم: ${acc.discount.cleanNum()})"
-                                else -> acc.netInvoiceSubtotal.cleanNum()
+                                acc == null || acc.netInvoiceSubtotal <= 0.0 -> if (noteStr.isNotBlank()) noteStr.trim() else ""
+                                acc.discount > 0.0 -> "${acc.netInvoiceSubtotal.cleanNum()}\n(خصم: ${acc.discount.cleanNum()})$noteStr"
+                                else -> "${acc.netInvoiceSubtotal.cleanNum()}$noteStr"
                             }
                             LedgerCell(
                                 text = invTotalStr,

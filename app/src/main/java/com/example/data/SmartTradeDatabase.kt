@@ -151,6 +151,9 @@ interface SmartTradeDao {
     @Query("SELECT * FROM products ORDER BY sortOrder ASC")
     suspend fun getAllProducts(): List<ProductEntity>
 
+    @Query("SELECT COUNT(*) FROM products")
+    suspend fun getProductsCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertProducts(products: List<ProductEntity>)
 
@@ -224,6 +227,12 @@ interface SmartTradeDao {
     )
     suspend fun getInvoiceCountsByDateInRangeSync(startDate: String, endDate: String): List<DateInvoiceCountProjection>
 
+    @Query("SELECT * FROM sales_invoices ORDER BY timestamp DESC LIMIT :limit")
+    fun observeLatestInvoices(limit: Int): Flow<List<SaleInvoiceEntity>>
+
+    @Query("SELECT * FROM sales_invoices WHERE date = :filterDate ORDER BY timestamp DESC LIMIT :limit")
+    fun observeInvoicesByDatePaged(filterDate: String, limit: Int): Flow<List<SaleInvoiceEntity>>
+
     @Query(
         """
         SELECT * FROM sales_invoices
@@ -234,6 +243,35 @@ interface SmartTradeDao {
         """
     )
     fun observeFilteredInvoices(query: String, filterDate: String, limit: Int): Flow<List<SaleInvoiceEntity>>
+
+    @Query(
+        """
+        SELECT 
+            COUNT(*) AS matchedCount,
+            COALESCE(ROUND(SUM(subtotal), 2), 0.0) AS totalInvoicesSubtotal,
+            COALESCE(ROUND(SUM(discount), 2), 0.0) AS totalDiscountGiven,
+            COALESCE(ROUND(SUM(paid), 2), 0.0) AS totalCashReceived,
+            COALESCE(ROUND(SUM(previousDebt), 2), 0.0) AS totalPrevDebtNotified,
+            COALESCE(ROUND(SUM(remaining), 2), 0.0) AS totalInvoicesRemaining
+        FROM sales_invoices
+        """
+    )
+    fun observeAllFinancialSummary(): Flow<FinancialSummaryTuple>
+
+    @Query(
+        """
+        SELECT 
+            COUNT(*) AS matchedCount,
+            COALESCE(ROUND(SUM(subtotal), 2), 0.0) AS totalInvoicesSubtotal,
+            COALESCE(ROUND(SUM(discount), 2), 0.0) AS totalDiscountGiven,
+            COALESCE(ROUND(SUM(paid), 2), 0.0) AS totalCashReceived,
+            COALESCE(ROUND(SUM(previousDebt), 2), 0.0) AS totalPrevDebtNotified,
+            COALESCE(ROUND(SUM(remaining), 2), 0.0) AS totalInvoicesRemaining
+        FROM sales_invoices
+        WHERE date = :filterDate
+        """
+    )
+    fun observeDateFinancialSummary(filterDate: String): Flow<FinancialSummaryTuple>
 
     @Query(
         """

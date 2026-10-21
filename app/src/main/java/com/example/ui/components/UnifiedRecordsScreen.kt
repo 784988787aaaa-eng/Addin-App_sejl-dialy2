@@ -8,7 +8,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.PictureAsPdf
@@ -113,44 +115,93 @@ fun UnifiedRecordsScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = {
-                            searchQuery = it
-                            pageLimit = 150
-                        },
-                        placeholder = { Text("ابحث باسم العميل، رقم الفاتورة، الملاحظات، أو التاريخ...", fontSize = 10.5.sp) },
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Surface(
+                        color = Color(0xFFF8FAFC),
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, Color(0xFFCBD5E1)),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(35.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = Color(0xFF64748B),
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "بحث بالعميل أو الفاتورة أو الملاحظة...",
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF94A3B8),
+                                        maxLines = 1
+                                    )
+                                }
+                                BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = {
+                                        searchQuery = it
+                                        pageLimit = 150
+                                    },
+                                    singleLine = true,
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0F172A)
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                            if (searchQuery.isNotEmpty()) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "مسح البحث",
+                                    tint = Color(0xFF64748B),
+                                    modifier = Modifier
+                                        .size(15.dp)
+                                        .clickable {
+                                            searchQuery = ""
+                                            pageLimit = 150
+                                        }
+                                )
+                            }
+                        }
+                    }
 
                     Button(
                         onClick = { showPeriodBookDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF312E81)),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        modifier = Modifier.height(48.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        modifier = Modifier.height(35.dp)
                     ) {
                         Icon(
                             imageVector = Icons.Default.PictureAsPdf,
                             contentDescription = null,
                             tint = Color.White,
-                            modifier = Modifier.size(15.dp)
+                            modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = "📚 كتاب السجلات PDF",
                             color = Color.White,
-                            fontSize = 10.sp,
+                            fontSize = 9.5.sp,
                             fontWeight = FontWeight.Black,
                             maxLines = 1,
                             softWrap = false
@@ -158,7 +209,7 @@ fun UnifiedRecordsScreen(
                     }
                 }
 
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     item {
                         FilterChip(
                             selected = filterDate.isBlank(),
@@ -166,7 +217,8 @@ fun UnifiedRecordsScreen(
                                 filterDate = ""
                                 pageLimit = 150
                             },
-                            label = { Text("كل الأيام ($totalRecordsCount)", fontSize = 9.5.sp) }
+                            label = { Text("كل الأيام ($totalRecordsCount)", fontSize = 9.sp, fontWeight = FontWeight.Bold) },
+                            modifier = Modifier.height(28.dp)
                         )
                     }
                     items(activeDates, key = { it }) { dStr ->
@@ -177,7 +229,8 @@ fun UnifiedRecordsScreen(
                                 filterDate = dStr
                                 pageLimit = 150
                             },
-                            label = { Text("$dName $dStr", fontSize = 9.5.sp) }
+                            label = { Text("$dName $dStr", fontSize = 9.sp, fontWeight = FontWeight.Bold) },
+                            modifier = Modifier.height(28.dp)
                         )
                     }
                 }
@@ -369,20 +422,22 @@ private fun InvoiceRecordCard(
                             horizontalArrangement = Arrangement.spacedBy(3.dp)
                         ) {
                             Text(
-                                text = if (hasPhone) "📞 $customerPhone" else "رقم الهاتف غير مسجل",
-                                color = if (hasPhone) Color(0xFF065F46) else Color(0xFF64748B),
+                                text = if (hasPhone) "📞 $customerPhone" else "إضافة هاتف ✎",
+                                color = if (hasPhone) Color(0xFF065F46) else Color(0xFF2563EB),
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 fontFamily = if (hasPhone) FontFamily.Monospace else FontFamily.Default,
                                 maxLines = 1,
                                 softWrap = false
                             )
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "تعديل اسم ورقم العميل",
-                                tint = if (hasPhone) Color(0xFF059669) else Color(0xFF2563EB),
-                                modifier = Modifier.size(11.dp)
-                            )
+                            if (hasPhone) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "تعديل اسم ورقم العميل",
+                                    tint = Color(0xFF059669),
+                                    modifier = Modifier.size(10.dp)
+                                )
+                            }
                         }
                     }
                 }

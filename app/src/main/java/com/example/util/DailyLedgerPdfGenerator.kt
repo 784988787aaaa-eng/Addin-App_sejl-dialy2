@@ -582,11 +582,7 @@ object DailyLedgerPdfGenerator {
             val decodedItemsMap = if (inv != null) decodeInvoiceItemsMap(inv.itemsJson) else emptyMap()
             val acc = if (inv != null) LedgerCalculator.computeUnifiedInvoiceAccounting(inv) else null
 
-            val customerCellText = when {
-                inv == null -> ""
-                inv.suppliedGoodsNote.isNotBlank() -> "${inv.customerName}\n(${inv.suppliedGoodsNote.trim()})"
-                else -> inv.customerName
-            }
+            val customerCellText = inv?.customerName ?: ""
 
             curX = rightEdge
             drawWrappedCell(curX, curY, colM, dataRowH, AndroidColor.parseColor("#CBD5E1"), "${globalIndex + 1}", AndroidColor.BLACK, 9.5f)
@@ -600,10 +596,11 @@ object DailyLedgerPdfGenerator {
                 curX -= colProdW
             }
 
+            val noteStr = if (!inv?.suppliedGoodsNote.isNullOrBlank()) "\n(${inv.suppliedGoodsNote.trim()})" else ""
             val invTotalCellText = when {
-                acc == null || acc.netInvoiceSubtotal <= 0.0 -> ""
-                acc.discount > 0.0 -> "${acc.netInvoiceSubtotal.cleanNum()}\n(خصم: ${acc.discount.cleanNum()})"
-                else -> acc.netInvoiceSubtotal.cleanNum()
+                acc == null || acc.netInvoiceSubtotal <= 0.0 -> if (noteStr.isNotBlank()) noteStr.trim() else ""
+                acc.discount > 0.0 -> "${acc.netInvoiceSubtotal.cleanNum()}\n(خصم: ${acc.discount.cleanNum()})$noteStr"
+                else -> "${acc.netInvoiceSubtotal.cleanNum()}$noteStr"
             }
             drawWrappedCell(
                 curX, curY, colInvoiceTotal, dataRowH,

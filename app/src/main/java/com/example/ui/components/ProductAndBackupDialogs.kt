@@ -66,13 +66,32 @@ fun EditProductsAndUnitsDialog(
         mutableStateOf(if (isAddingNew) "كيلو" else (currentProduct?.majorUnit ?: "كيلو"))
     }
     var enableMinorUnit by remember(currentProduct, isAddingNew) {
-        mutableStateOf(if (isAddingNew) false else (currentProduct?.minorUnit?.isNotBlank() == true))
+        // الوضع الافتراضي لتفعيل الوحدة الصغرى مفعل دائماً
+        mutableStateOf(true)
     }
     var minorUnitInput by remember(currentProduct, isAddingNew) {
-        mutableStateOf(if (isAddingNew) "ثمن" else (currentProduct?.minorUnit?.ifBlank { "ثمن" } ?: "ثمن"))
+        mutableStateOf(
+            when {
+                isAddingNew -> "ثمن"
+                !currentProduct?.minorUnit.isNullOrBlank() -> currentProduct!!.minorUnit
+                currentProduct?.majorUnit == "فراسلة" -> "ثمن"
+                currentProduct?.majorUnit == "كيلو" -> "جرام"
+                currentProduct?.majorUnit == "كرتون" -> "حبة"
+                else -> "ثمن"
+            }
+        )
     }
     var factorInput by remember(currentProduct, isAddingNew) {
-        mutableStateOf(if (isAddingNew) "8" else (currentProduct?.factor?.cleanNum() ?: "2"))
+        mutableStateOf(
+            when {
+                isAddingNew -> "8"
+                (currentProduct?.factor ?: 0.0) > 1.0 -> currentProduct!!.factor.cleanNum()
+                currentProduct?.majorUnit == "فراسلة" -> "8"
+                currentProduct?.majorUnit == "كيلو" -> "1000"
+                currentProduct?.majorUnit == "كرتون" -> "35"
+                else -> "8"
+            }
+        )
     }
     var priceInput by remember(currentProduct, isAddingNew) {
         mutableStateOf(if (isAddingNew) "" else if ((currentProduct?.price ?: 0.0) > 0) currentProduct!!.price.cleanNum() else "")
@@ -188,13 +207,15 @@ fun EditProductsAndUnitsDialog(
                             value = nameInput,
                             onValueChange = { nameInput = it },
                             label = { Text("اسم الصنف", fontSize = 11.sp) },
+                            placeholder = { Text("مثال: خضراء، قات...", fontSize = 10.sp) },
                             singleLine = true,
                             modifier = Modifier.weight(1.2f)
                         )
                         OutlinedTextField(
                             value = majorUnitInput,
                             onValueChange = { majorUnitInput = it },
-                            label = { Text("الوحدة الكبرى (فراسلة / كيلو)", fontSize = 10.5.sp) },
+                            label = { Text("الوحدة الكبرى", fontSize = 10.5.sp) },
+                            placeholder = { Text("فراسلة / كيلو / كرتون", fontSize = 9.5.sp) },
                             singleLine = true,
                             modifier = Modifier.weight(1f)
                         )
@@ -214,31 +235,33 @@ fun EditProductsAndUnitsDialog(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "تفعيل الوحدة الصغرى (مثل: ثمن / حبة / نص)",
+                                        text = "تفعيل الوحدة الصغرى (مفعّل دائماً)",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = Color(0xFF1E293B)
                                     )
                                     Text(
-                                        text = "يظهر المتبقي والمباع بالوحدة الكبرى ومتبقي الصغرى بوضوح تام",
-                                        fontSize = 9.5.sp,
+                                        text = "يظهر المتبقي والمباع بالوحدة الكبرى ومتبقي الصغرى بدقة تامة",
+                                        fontSize = 9.sp,
                                         color = Color(0xFF64748B)
                                     )
                                 }
                                 Switch(checked = enableMinorUnit, onCheckedChange = { enableMinorUnit = it })
                             }
 
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            // الاقتراحات الحصرية الثلاثة بترتيبها الاحترافي الدقيق
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                                 listOf(
-                                    Triple("فراسلة", "ثمن", "8"),
-                                    Triple("كيلو", "حبة", "2"),
-                                    Triple("كيلو", "ثمن", "8"),
-                                    Triple("كرتون", "حبة", "12")
-                                ).forEach { (maj, min, fac) ->
+                                    "فراسلة = (8 أثمان)" to Triple("فراسلة", "ثمن", "8"),
+                                    "كيلو = (1000 جرام)" to Triple("كيلو", "جرام", "1000"),
+                                    "كرتون = (35)" to Triple("كرتون", "حبة", "35")
+                                ).forEach { (chipLabel, tuple) ->
+                                    val (maj, min, fac) = tuple
+                                    val isCurrentPreset = majorUnitInput.trim() == maj && minorUnitInput.trim() == min && factorInput.trim() == fac
                                     Surface(
-                                        color = Color(0xFFEFF6FF),
-                                        shape = RoundedCornerShape(7.dp),
-                                        border = BorderStroke(1.dp, Color(0xFFBFDBFE)),
+                                        color = if (isCurrentPreset) Color(0xFFDBEAFE) else Color(0xFFEFF6FF),
+                                        shape = RoundedCornerShape(8.dp),
+                                        border = BorderStroke(1.dp, if (isCurrentPreset) Color(0xFF2563EB) else Color(0xFFBFDBFE)),
                                         modifier = Modifier
                                             .weight(1f)
                                             .clickable {
@@ -249,12 +272,14 @@ fun EditProductsAndUnitsDialog(
                                             }
                                     ) {
                                         Text(
-                                            text = "$maj + $min ($fac)",
+                                            text = chipLabel,
                                             fontSize = 9.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = Color(0xFF1D4ED8),
-                                            modifier = Modifier.padding(vertical = 4.dp, horizontal = 2.dp),
-                                            textAlign = TextAlign.Center
+                                            fontWeight = FontWeight.Black,
+                                            color = if (isCurrentPreset) Color(0xFF1E40AF) else Color(0xFF1D4ED8),
+                                            modifier = Modifier.padding(vertical = 5.dp, horizontal = 2.dp),
+                                            textAlign = TextAlign.Center,
+                                            maxLines = 1,
+                                            softWrap = false
                                         )
                                     }
                                 }
@@ -265,14 +290,16 @@ fun EditProductsAndUnitsDialog(
                                     OutlinedTextField(
                                         value = minorUnitInput,
                                         onValueChange = { minorUnitInput = it },
-                                        label = { Text("اسم الوحدة الصغرى (ثمن / حبة)", fontSize = 10.sp) },
+                                        label = { Text("الوحدة الصغرى", fontSize = 10.5.sp) },
+                                        placeholder = { Text("ثمن / جرام / حبة", fontSize = 9.5.sp) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f)
                                     )
                                     OutlinedTextField(
                                         value = factorInput,
                                         onValueChange = { factorInput = it },
-                                        label = { Text("كم (${minorUnitInput.ifBlank { "صغرى" }}) في 1 (${majorUnitInput.ifBlank { "كبرى" }})", fontSize = 9.5.sp) },
+                                        label = { Text("العدد في 1 ${majorUnitInput.ifBlank { "كبرى" }}", fontSize = 10.sp) },
+                                        placeholder = { Text("مثال: 8 أو 1000 أو 35", fontSize = 9.sp) },
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         singleLine = true,
                                         modifier = Modifier.weight(1f)

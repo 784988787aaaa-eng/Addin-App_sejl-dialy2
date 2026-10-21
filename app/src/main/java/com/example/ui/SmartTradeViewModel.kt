@@ -199,7 +199,7 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
-            if (dao.getAllProducts().isEmpty()) {
+            if (dao.getProductsCount() == 0) {
                 dao.upsertProducts(getInitialPaperCommodities())
             }
             if (!prefs.getBoolean("direct_msg_migrated_v8", false)) {
@@ -259,11 +259,25 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun observeFilteredInvoicesPaged(query: String, filterDate: String, limit: Int): Flow<List<SaleInvoiceEntity>> =
-        dao.observeFilteredInvoices(query.trim(), filterDate.trim(), limit).flowOn(Dispatchers.IO)
+    fun observeFilteredInvoicesPaged(query: String, filterDate: String, limit: Int): Flow<List<SaleInvoiceEntity>> {
+        val cleanQuery = query.trim()
+        val cleanDate = filterDate.trim()
+        return when {
+            cleanQuery.isEmpty() && cleanDate.isEmpty() -> dao.observeLatestInvoices(limit)
+            cleanQuery.isEmpty() -> dao.observeInvoicesByDatePaged(cleanDate, limit)
+            else -> dao.observeFilteredInvoices(cleanQuery, cleanDate, limit)
+        }.flowOn(Dispatchers.IO)
+    }
 
-    fun observeFilteredFinancialSummary(query: String, filterDate: String): Flow<FinancialSummaryTuple> =
-        dao.observeFilteredFinancialSummary(query.trim(), filterDate.trim()).flowOn(Dispatchers.IO)
+    fun observeFilteredFinancialSummary(query: String, filterDate: String): Flow<FinancialSummaryTuple> {
+        val cleanQuery = query.trim()
+        val cleanDate = filterDate.trim()
+        return when {
+            cleanQuery.isEmpty() && cleanDate.isEmpty() -> dao.observeAllFinancialSummary()
+            cleanQuery.isEmpty() -> dao.observeDateFinancialSummary(cleanDate)
+            else -> dao.observeFilteredFinancialSummary(cleanQuery, cleanDate)
+        }.flowOn(Dispatchers.IO)
+    }
 
     fun loadMoreSupplies() { _suppliesPageLimit.value += 250 }
 

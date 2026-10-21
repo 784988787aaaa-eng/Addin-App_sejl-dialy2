@@ -91,36 +91,61 @@ fun SuppliesTabScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFFF3F6FB))
-            .padding(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = 6.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         item {
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(14.dp),
+                shape = RoundedCornerShape(12.dp),
                 border = BorderStroke(1.dp, Color(0xFFA7F3D0)),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
-                    modifier = Modifier.padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    Text(
-                        text = "🟢 تسجيل وارد بضاعة جديد (B$nextSupplyCounter) — لواتساب المدير",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                        color = Color(0xFF065F46)
-                    )
+                    // شريط العنوان والمخزون الحالي المدمج الأنيق
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🟢 توريد بضاعة (B$nextSupplyCounter)",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Black,
+                            color = Color(0xFF065F46)
+                        )
+                        if (unifiedSupplyPreview != null) {
+                            Surface(
+                                color = Color(0xFFECFDF5),
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(0.8.dp, Color(0xFF6EE7B7))
+                            ) {
+                                Text(
+                                    text = "المتوفر: ${unifiedSupplyPreview.prevStockDisplay} ➔ الإجمالي: ${unifiedSupplyPreview.cumulativeStockDisplay}",
+                                    fontSize = 8.5.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = Color(0xFF064E3B),
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                    }
 
-                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // شريط اختيار الأصناف الرشيق
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                         items(products, key = { it.key }) { prod ->
                             val isSel = prod.key == selectedProdKey
                             val showDeleteBadge = deleteBadgeProductKey == prod.key
                             Surface(
                                 color = if (isSel) Color(0xFF059669) else Color(prod.colorBgHex),
-                                shape = RoundedCornerShape(9.dp),
+                                shape = RoundedCornerShape(7.dp),
                                 border = BorderStroke(
-                                    width = if (showDeleteBadge) 2.dp else 1.dp,
+                                    width = if (showDeleteBadge) 1.8.dp else 0.8.dp,
                                     color = when {
                                         showDeleteBadge -> Color(0xFFDC2626)
                                         isSel -> Color(0xFF047857)
@@ -128,7 +153,7 @@ fun SuppliesTabScreen(
                                     }
                                 ),
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(9.dp))
+                                    .clip(RoundedCornerShape(7.dp))
                                     .combinedClickable(
                                         onClick = {
                                             if (deleteBadgeProductKey != null) deleteBadgeProductKey = null
@@ -145,18 +170,18 @@ fun SuppliesTabScreen(
                                     Text(
                                         text = prod.name,
                                         color = if (isSel) Color.White else Color(prod.colorTextHex),
-                                        fontSize = 10.5.sp,
+                                        fontSize = 9.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         maxLines = 1,
                                         softWrap = false,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
                                     if (showDeleteBadge) {
                                         Box(
                                             modifier = Modifier
                                                 .align(Alignment.TopStart)
-                                                .padding(2.dp)
-                                                .size(18.dp)
+                                                .padding(1.5.dp)
+                                                .size(16.dp)
                                                 .clip(CircleShape)
                                                 .background(Color(0xFFDC2626))
                                                 .border(1.dp, Color.White, CircleShape)
@@ -170,7 +195,7 @@ fun SuppliesTabScreen(
                                                 imageVector = Icons.Default.Delete,
                                                 contentDescription = "حذف الصنف ${prod.name}",
                                                 tint = Color.White,
-                                                modifier = Modifier.size(11.dp)
+                                                modifier = Modifier.size(10.dp)
                                             )
                                         }
                                     }
@@ -179,65 +204,26 @@ fun SuppliesTabScreen(
                         }
                     }
 
-                    if (unifiedSupplyPreview != null) {
-                        Surface(
-                            color = Color(0xFFECFDF5),
-                            shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, Color(0xFF6EE7B7)),
-                            modifier = Modifier.fillMaxWidth()
+                    // حقول إدخال التوريد الرشيقة التي توفر المساحة بالكامل
+                    if (hasMinorUnit) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalArrangement = Arrangement.spacedBy(3.dp)
-                            ) {
-                                Text(
-                                    text = "السابق المتوفر: ${unifiedSupplyPreview.prevStockDisplay}  |  المورد: ${unifiedSupplyPreview.enteredDisplay}",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF065F46)
-                                )
-                                Text(
-                                    text = "الإجمالي الكلي الحالي: ${unifiedSupplyPreview.cumulativeStockDisplay}",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Black,
-                                    color = Color(0xFF064E3B)
-                                )
-                            }
-                        }
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = majorQtyStr,
-                            onValueChange = { majorQtyStr = it.replace("-", "") },
-                            label = { Text("العدد المورد (${selectedProd?.majorUnit ?: "كيلو"})", fontSize = 10.5.sp) },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Decimal,
-                                imeAction = ImeAction.Next
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onNext = {
-                                    if (hasMinorUnit) minorFocus.requestFocus() else notesFocus.requestFocus()
-                                }
-                            ),
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        if (hasMinorUnit) {
+                            OutlinedTextField(
+                                value = majorQtyStr,
+                                onValueChange = { majorQtyStr = it.replace("-", "") },
+                                label = { Text("المورد (${selectedProd?.majorUnit ?: "كبرى"})", fontSize = 9.5.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                                keyboardActions = KeyboardActions(onNext = { minorFocus.requestFocus() }),
+                                singleLine = true,
+                                modifier = Modifier.weight(1f)
+                            )
                             OutlinedTextField(
                                 value = minorQtyStr,
                                 onValueChange = { minorQtyStr = it.replace("-", "") },
-                                label = { Text("الوحدة الصغرى (${selectedProd?.minorUnit})", fontSize = 10.5.sp) },
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Decimal,
-                                    imeAction = ImeAction.Next
-                                ),
+                                label = { Text("صغرى (${selectedProd?.minorUnit})", fontSize = 9.5.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
                                 keyboardActions = KeyboardActions(onNext = { notesFocus.requestFocus() }),
                                 singleLine = true,
                                 modifier = Modifier
@@ -245,19 +231,45 @@ fun SuppliesTabScreen(
                                     .focusRequester(minorFocus)
                             )
                         }
+                        OutlinedTextField(
+                            value = notesStr,
+                            onValueChange = { notesStr = it },
+                            placeholder = { Text("بيان أو ملاحظات التوريد للمدير (اختياري)...", fontSize = 9.5.sp) },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(notesFocus)
+                        )
+                    } else {
+                        // في حال الصنف بوحدة كبرى فقط: نضع الكمية والملاحظات جنباً إلى جنب في سطر واحد فائق الرشاقة!
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = majorQtyStr,
+                                onValueChange = { majorQtyStr = it.replace("-", "") },
+                                label = { Text("العدد المورد (${selectedProd?.majorUnit ?: "كيلو"})", fontSize = 9.5.sp) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next),
+                                keyboardActions = KeyboardActions(onNext = { notesFocus.requestFocus() }),
+                                singleLine = true,
+                                modifier = Modifier.weight(1.1f)
+                            )
+                            OutlinedTextField(
+                                value = notesStr,
+                                onValueChange = { notesStr = it },
+                                placeholder = { Text("ملاحظات التوريد...", fontSize = 9.5.sp) },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                singleLine = true,
+                                modifier = Modifier
+                                    .weight(1.4f)
+                                    .focusRequester(notesFocus)
+                            )
+                        }
                     }
 
-                    OutlinedTextField(
-                        value = notesStr,
-                        onValueChange = { notesStr = it },
-                        label = { Text("بيان التوريد / ملاحظات للمدير (اختياري)", fontSize = 10.5.sp) },
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(notesFocus)
-                    )
-
+                    // أزرار الحفظ والإرسال الرشيقة
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -288,16 +300,17 @@ fun SuppliesTabScreen(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             modifier = Modifier
-                                .weight(1.45f)
-                                .height(42.dp)
+                                .weight(1.4f)
+                                .height(35.dp)
                         ) {
-                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(5.dp))
+                            Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "إرسال للمدير (B$nextSupplyCounter)",
-                                fontSize = 10.5.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color.White,
                                 maxLines = 1,
@@ -331,14 +344,15 @@ fun SuppliesTabScreen(
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E3A8A)),
-                            shape = RoundedCornerShape(10.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
                             modifier = Modifier
                                 .weight(0.85f)
-                                .height(42.dp)
+                                .height(35.dp)
                         ) {
                             Text(
                                 text = "حفظ فقط",
-                                fontSize = 10.5.sp,
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
                                 color = Color.White,
                                 maxLines = 1,
