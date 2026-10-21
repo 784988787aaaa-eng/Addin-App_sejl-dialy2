@@ -10,7 +10,9 @@ data class RestoredCountersResult(
     val salesCounter: Int,
     val supplyCounter: Int,
     val managerPhone: String,
-    val userName: String
+    val userName: String,
+    val activeOpenSheetDate: String = "",
+    val closedSheetDates: Set<String> = emptySet()
 )
 
 /**
@@ -33,9 +35,11 @@ object TradeRepositoryOperations {
         remaining: Double,
         currency: String,
         userName: String = "",
-        invoiceNote: String = ""
+        invoiceNote: String = "",
+        ledgerSheetDate: String = dt.date
     ): SaleInvoiceEntity {
         val cleanNote = invoiceNote.trim()
+        val effectiveSheetDate = ledgerSheetDate.trim().ifBlank { dt.date }
         val records = currentCart.map {
             InvoiceItemRecord(
                 key = it.productKey,
@@ -135,7 +139,7 @@ object TradeRepositoryOperations {
             remaining = acc.remainingOnInvoice,
             suppliedGoodsNote = cleanNote,
             dayName = dt.dayName,
-            date = dt.date,
+            date = effectiveSheetDate,
             time = dt.time12h,
             timestamp = dt.timestamp,
             itemsJson = itemsJson,
@@ -204,12 +208,13 @@ object TradeRepositoryOperations {
         val updatedInvoices = targetInvoices.map { inv ->
             val items = decodeInvoiceItemsJson(inv.itemsJson)
             val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(inv)
+            val actualDate = inv.actualRecordDate()
             val customerMsg = LedgerCalculator.buildCustomerWhatsAppMessage(
-                inv.invoiceNumber, inv.dayName, inv.date, inv.time,
+                inv.invoiceNumber, inv.dayName, actualDate, inv.time,
                 cleanName, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName, inv.suppliedGoodsNote
             )
             val managerMsg = LedgerCalculator.buildManagerInvoiceWhatsAppMessage(
-                inv.invoiceNumber, inv.dayName, inv.date, inv.time,
+                inv.invoiceNumber, inv.dayName, actualDate, inv.time,
                 cleanName, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName, inv.suppliedGoodsNote
             )
             inv.copy(
@@ -256,12 +261,13 @@ object TradeRepositoryOperations {
         val effectivePhone = invoice.customerPhone.ifBlank { existingCust?.phone.orEmpty() }
         val prodsMap = dao.getAllProducts().associateBy { it.key }
 
+        val actualDate = invoice.actualRecordDate()
         val customerMsg = LedgerCalculator.buildCustomerWhatsAppMessage(
-            invoice.invoiceNumber, invoice.dayName, invoice.date, invoice.time,
+            invoice.invoiceNumber, invoice.dayName, actualDate, invoice.time,
             cleanCust, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName, cleanNote
         )
         val managerMsg = LedgerCalculator.buildManagerInvoiceWhatsAppMessage(
-            invoice.invoiceNumber, invoice.dayName, invoice.date, invoice.time,
+            invoice.invoiceNumber, invoice.dayName, actualDate, invoice.time,
             cleanCust, items, acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName, cleanNote
         )
 
@@ -293,8 +299,10 @@ object TradeRepositoryOperations {
         majorQty: Double,
         cleanMin: Double,
         notes: String,
-        userName: String = ""
+        userName: String = "",
+        ledgerSheetDate: String = dt.date
     ): SupplyBatchEntity {
+        val effectiveSheetDate = ledgerSheetDate.trim().ifBlank { dt.date }
         val supplyAcc = LedgerCalculator.computeUnifiedSupplyAccounting(
             product = prod,
             enteredMajor = majorQty,
@@ -328,7 +336,7 @@ object TradeRepositoryOperations {
             cumulativeStock = supplyAcc.cumulativeStock,
             majorUnit = prod.majorUnit,
             dayName = dt.dayName,
-            date = dt.date,
+            date = effectiveSheetDate,
             time = dt.time12h,
             timestamp = dt.timestamp,
             notes = notes.trim(),
@@ -358,8 +366,9 @@ object TradeRepositoryOperations {
         val updatedProd = prod.copy(stock = LedgerCalculator.addStock(prod.stock, deltaEq))
         dao.upsertProduct(updatedProd)
 
+        val actualDate = batch.actualRecordDate()
         val waText = LedgerCalculator.buildManagerSupplyWhatsAppMessage(
-            batch.batchNumber, batch.dayName, batch.date, batch.time,
+            batch.batchNumber, batch.dayName, actualDate, batch.time,
             updatedProd, supplyAcc.prevStock, supplyAcc.enteredDisplay, supplyAcc.cumulativeStock, newNotes.trim(), userName
         )
         val updatedBatch = batch.copy(
@@ -507,11 +516,21 @@ object TradeRepositoryOperations {
             }
         }
 
+        val restoredClosedSet = mutableSetOf<String>()
+        root.optJSONArray("closedSheetDates")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val s = arr.optString(i, "").trim()
+                if (s.isNotEmpty()) restoredClosedSet.add(s)
+            }
+        }
+
         return RestoredCountersResult(
             salesCounter = root.optInt("salesCounter", defaultSalesCounter),
             supplyCounter = root.optInt("supplyCounter", defaultSupplyCounter),
             managerPhone = root.optString("managerPhone", defaultManagerPhone),
-            userName = root.optString("userName", defaultUserName)
+            userName = root.optString("userName", defaultUserName),
+            activeOpenSheetDate = root.optString("activeOpenSheetDate", ""),
+            closedSheetDates = restoredClosedSet
         )
     }
 
@@ -520,9 +539,10 @@ object TradeRepositoryOperations {
         val supplies = dao.getRecentSuppliesForBackup(500)
         val updatedSupplies = supplies.mapNotNull { s ->
             val prod = prodsMap[s.productKey]
+            val actualDate = s.actualRecordDate()
             val directMsg = if (prod != null) {
                 LedgerCalculator.buildManagerSupplyWhatsAppMessage(
-                    s.batchNumber, s.dayName, s.date, s.time, prod, s.prevStock, s.enteredDisplay, s.cumulativeStock, s.notes, userName
+                    s.batchNumber, s.dayName, actualDate, s.time, prod, s.prevStock, s.enteredDisplay, s.cumulativeStock, s.notes, userName
                 )
             } else {
                 WhatsAppMessageFormatter.sanitizeDirectMessage(s.whatsappText, userName)
@@ -535,12 +555,13 @@ object TradeRepositoryOperations {
         val updatedInvoices = invoices.mapNotNull { inv ->
             val items = decodeInvoiceItemsJson(inv.itemsJson)
             val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(inv)
+            val actualDate = inv.actualRecordDate()
             val cleanCustomerMsg = LedgerCalculator.buildCustomerWhatsAppMessage(
-                inv.invoiceNumber, inv.dayName, inv.date, inv.time, inv.customerName, items,
+                inv.invoiceNumber, inv.dayName, actualDate, inv.time, inv.customerName, items,
                 acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, userName, inv.suppliedGoodsNote
             )
             val cleanManagerMsg = LedgerCalculator.buildManagerInvoiceWhatsAppMessage(
-                inv.invoiceNumber, inv.dayName, inv.date, inv.time, inv.customerName, items,
+                inv.invoiceNumber, inv.dayName, actualDate, inv.time, inv.customerName, items,
                 acc.netInvoiceSubtotal, acc.previousDebtPaid, acc.discount, acc.paidCash, acc.remainingOnInvoice, currency, prodsMap, userName, inv.suppliedGoodsNote
             )
             if (cleanCustomerMsg != inv.whatsappText || cleanManagerMsg != inv.managerWhatsappText) {

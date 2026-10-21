@@ -41,6 +41,7 @@ import com.example.domain.LedgerCalculator
 import com.example.ui.SmartTradeViewModel
 import com.example.ui.openWhatsAppDirectOrShare
 import com.example.util.cleanNum
+import com.example.util.resolveActualTransactionDate
 
 /**
  * شاشة التوريدات المستقلة (🟢 B1001 — حصراً لواتساب المدير مع رسائل تأكيد الحذف والتعديل)
@@ -389,8 +390,9 @@ fun SuppliesTabScreen(
                             fontWeight = FontWeight.ExtraBold,
                             color = Color(0xFF065F46)
                         )
+                        val actualSupDate = resolveActualTransactionDate(sup.date, sup.timestamp)
                         Text(
-                            text = "اليوم: ${sup.dayName} | التاريخ: ${sup.date} | الساعة: ${sup.time}",
+                            text = "اليوم: ${sup.dayName} | التاريخ: $actualSupDate | الساعة: ${sup.time}",
                             fontSize = 9.5.sp,
                             color = Color(0xFF64748B)
                         )
@@ -411,11 +413,12 @@ fun SuppliesTabScreen(
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                         IconButton(onClick = {
+                            val actualSupDate = resolveActualTransactionDate(sup.date, sup.timestamp)
                             val directSupplyMsg = if (prod != null) {
                                 LedgerCalculator.buildManagerSupplyWhatsAppMessage(
                                     batchNum = sup.batchNumber,
                                     dayName = sup.dayName,
-                                    date = sup.date,
+                                    date = actualSupDate,
                                     time = sup.time,
                                     product = prod,
                                     prevStock = sup.prevStock,

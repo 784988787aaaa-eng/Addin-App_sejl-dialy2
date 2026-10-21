@@ -89,16 +89,73 @@ fun getCurrentDateTimeArabic(timeMillis: Long = System.currentTimeMillis()): Ara
     )
 }
 
+fun extractBaseDateFromSheetKey(sheetKey: String): String =
+    sheetKey.substringBefore("#").trim()
+
+fun extractSheetSequenceNumber(sheetKey: String): Int =
+    if (sheetKey.contains("#")) (sheetKey.substringAfter("#").trim().toIntOrNull() ?: 1) else 1
+
+fun formatSheetDateDisplay(sheetKey: String): String {
+    val clean = sheetKey.trim()
+    if (!clean.contains("#")) return clean
+    val base = extractBaseDateFromSheetKey(clean)
+    val seq = extractSheetSequenceNumber(clean)
+    return if (seq > 1) "$base (سجل $seq)" else base
+}
+
+/**
+ * استخراج التاريخ الميلادي الفعلي الدقيق للمعاملة (سواء قبل 12 ليلاً أو بعد 12 ليلاً)
+ * اعتماداً على الطابع الزمني الحقيقي للمعاملة مع الحفاظ على التوافق التام مع بيانات الاختبارات
+ */
+fun resolveActualTransactionDate(storedSheetDate: String, timestamp: Long): String {
+    if (timestamp > 1_000_000_000_000L) {
+        return getCurrentDateTimeArabic(timestamp).date
+    }
+    return extractBaseDateFromSheetKey(storedSheetDate)
+}
+
+/**
+ * توليد مفتاح السجل المحاسبي الجديد الصافي عند ضغط المستخدم على زر «إغلاق اليوم»
+ */
+fun computeNextOpenSheetKey(
+    closingSheetKey: String,
+    currentClockDate: String,
+    existingOrClosedSheetKeys: Collection<String>
+): String {
+    val closingBaseDate = extractBaseDateFromSheetKey(closingSheetKey)
+    val targetBaseDate = if (currentClockDate > closingBaseDate) currentClockDate else closingBaseDate
+    val usedSet = existingOrClosedSheetKeys.toHashSet()
+    usedSet.add(closingSheetKey.trim())
+
+    if (!usedSet.contains(targetBaseDate) && targetBaseDate != closingSheetKey.trim()) {
+        return targetBaseDate
+    }
+    var seq = if (targetBaseDate == closingBaseDate) {
+        extractSheetSequenceNumber(closingSheetKey) + 1
+    } else {
+        2
+    }
+    while (seq < 1000) {
+        val candidate = "$targetBaseDate#$seq"
+        if (!usedSet.contains(candidate)) {
+            return candidate
+        }
+        seq++
+    }
+    return "$targetBaseDate#${System.currentTimeMillis() % 10000}"
+}
+
 fun getDayNameFromDateStr(dateStr: String): String {
-    if (dateStr.isBlank()) return "اليوم"
-    dayNameCache[dateStr]?.let { return it }
+    val baseDate = extractBaseDateFromSheetKey(dateStr)
+    if (baseDate.isBlank()) return "اليوم"
+    dayNameCache[baseDate]?.let { return it }
     return try {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val parsed = sdf.parse(dateStr) ?: return "اليوم"
+        val parsed = sdf.parse(baseDate) ?: return "اليوم"
         val cal = Calendar.getInstance().apply { time = parsed }
         val resolved = getArabicDayName(cal.get(Calendar.DAY_OF_WEEK))
         if (dayNameCache.size > 2000) dayNameCache.clear()
-        dayNameCache[dateStr] = resolved
+        dayNameCache[baseDate] = resolved
         resolved
     } catch (e: Exception) {
         "اليوم"
@@ -106,16 +163,17 @@ fun getDayNameFromDateStr(dateStr: String): String {
 }
 
 fun shiftDateString(dateStr: String, daysDelta: Int): String {
+    val baseDate = extractBaseDateFromSheetKey(dateStr)
     return try {
         val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
-        val parsed = sdf.parse(dateStr) ?: Date()
+        val parsed = sdf.parse(baseDate) ?: Date()
         val cal = Calendar.getInstance().apply {
             time = parsed
             add(Calendar.DAY_OF_YEAR, daysDelta)
         }
         sdf.format(cal.time)
     } catch (e: Exception) {
-        dateStr
+        baseDate
     }
 }
 

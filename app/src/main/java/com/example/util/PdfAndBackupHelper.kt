@@ -77,16 +77,26 @@ object PdfAndBackupHelper {
         supplyCounter: Int,
         managerPhone: String,
         connectedAccount: String,
-        userName: String = ""
+        userName: String = "",
+        activeOpenSheetDate: String = "",
+        closedSheetDates: Set<String> = emptySet()
     ): String {
         val root = JSONObject()
-        root.put("version", 4)
+        root.put("version", 5)
         root.put("backupTimestamp", System.currentTimeMillis())
         root.put("salesCounter", salesCounter)
         root.put("supplyCounter", supplyCounter)
         root.put("managerPhone", managerPhone)
         root.put("connectedAccount", connectedAccount)
         root.put("userName", userName)
+        if (activeOpenSheetDate.isNotBlank()) {
+            root.put("activeOpenSheetDate", activeOpenSheetDate)
+        }
+        if (closedSheetDates.isNotEmpty()) {
+            val closedArr = JSONArray()
+            closedSheetDates.forEach { closedArr.put(it) }
+            root.put("closedSheetDates", closedArr)
+        }
 
         val prodArr = JSONArray()
         products.forEach { p ->
@@ -178,6 +188,39 @@ object PdfAndBackupHelper {
             file
         } catch (e: Exception) {
             null
+        }
+    }
+
+    fun savePendingCloudBackup(context: Context, backupJson: String): File? {
+        return try {
+            val file = File(context.filesDir, "SmartTradeBook_PendingCloudBackup.json")
+            file.writeText(backupJson, Charsets.UTF_8)
+            file
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun readPendingCloudBackup(context: Context): String? {
+        return try {
+            val file = File(context.filesDir, "SmartTradeBook_PendingCloudBackup.json")
+            if (file.exists() && file.length() > 0L) {
+                file.readText(Charsets.UTF_8).takeIf { it.isNotBlank() }
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun clearPendingCloudBackup(context: Context) {
+        try {
+            val file = File(context.filesDir, "SmartTradeBook_PendingCloudBackup.json")
+            if (file.exists()) {
+                file.delete()
+            }
+        } catch (_: Exception) {
         }
     }
 

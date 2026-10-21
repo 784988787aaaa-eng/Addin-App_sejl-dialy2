@@ -344,4 +344,37 @@ class UnifiedAccountingAndScalabilityTest {
         )
         assertTrue(managerMsg.contains("ملاحظات: $noteText"))
     }
+
+    @Test
+    fun `test manual day close and post midnight shift continuity with real transaction dates`() {
+        val openSheetKey = "2026-10-21"
+        // معاملة تمت بعد منتصف الليل الساعة 2:15 فجراً يوم 2026-10-22 قبل الضغط على إغلاق اليوم
+        val cal = java.util.Calendar.getInstance().apply {
+            set(2026, java.util.Calendar.OCTOBER, 22, 2, 15, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        val afterMidnightMillis = cal.timeInMillis
+
+        // 1. التاريخ الفعلي للمعاملة يظل 2026-10-22 بينما السجل المحاسبي المفتوح يظل 2026-10-21
+        val actualTxDate = com.example.util.resolveActualTransactionDate(openSheetKey, afterMidnightMillis)
+        assertEquals("2026-10-22", actualTxDate)
+
+        // 2. عند الضغط على «إغلاق اليوم» الساعة 2:30 فجراً (التاريخ الحالي 2026-10-22 > 2026-10-21) يفتح سجل 2026-10-22 الصافي
+        val nextSheetAfterMidnight = com.example.util.computeNextOpenSheetKey(
+            closingSheetKey = "2026-10-21",
+            currentClockDate = "2026-10-22",
+            existingOrClosedSheetKeys = listOf("2026-10-21")
+        )
+        assertEquals("2026-10-22", nextSheetAfterMidnight)
+
+        // 3. عند الضغط على «إغلاق اليوم» قبل منتصف الليل في نفس اليوم (2026-10-21) يفتح سجل تالٍ صافي (2026-10-21#2)
+        val nextSheetSameDay = com.example.util.computeNextOpenSheetKey(
+            closingSheetKey = "2026-10-21",
+            currentClockDate = "2026-10-21",
+            existingOrClosedSheetKeys = listOf("2026-10-21")
+        )
+        assertEquals("2026-10-21#2", nextSheetSameDay)
+        assertEquals("2026-10-21 (سجل 2)", com.example.util.formatSheetDateDisplay(nextSheetSameDay))
+        assertEquals("الأربعاء", com.example.util.getDayNameFromDateStr(nextSheetSameDay))
+    }
 }

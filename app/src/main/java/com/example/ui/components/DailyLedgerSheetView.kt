@@ -12,18 +12,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.ProductEntity
 import com.example.data.SaleInvoiceEntity
 import com.example.domain.DailyFinancialTotals
 import com.example.domain.ProductDailyStockStats
-import com.example.domain.WhatsAppMessageFormatter
 import com.example.ui.SmartTradeViewModel
 import com.example.ui.openWhatsAppDirectOrShare
 import com.example.util.PdfAndBackupHelper
-import com.example.util.getCurrentDateTimeArabic
+import com.example.util.cleanNum
+import com.example.util.formatSheetDateDisplay
 import com.example.util.getDayNameFromDateStr
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -31,7 +33,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.ceil
 
 /**
- * شاشة كشف الحساب اليومي المتكامل (تجمع الشريط العلوي الرشيق مع زر مشاركة السجل المطبوع للمدير مباشرة وجدول الكشف ملء الصفحة)
+ * شاشة كشف الحساب اليومي المتكامل (تجمع الشريط العلوي الرشيق مع زر إغلاق اليوم وزر مشاركة السجل المطبوع للمدير مباشرة وجدول الكشف ملء الصفحة)
  * تعمل بسلاسة فائقة مع آلاف وملايين المعاملات عبر الحسابات المسبقة في الخلفية (Dispatchers.Default)
  */
 @Composable
@@ -54,7 +56,9 @@ fun DailyLedgerSheetScreen(
         mutableStateOf(activity?.requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE)
     }
 
+    val activeOpenSheetDate by viewModel.activeOpenSheetDate.collectAsStateWithLifecycle()
     val dayName = remember(selectedDate) { getDayNameFromDateStr(selectedDate) }
+    val displaySelectedDate = remember(selectedDate) { formatSheetDateDisplay(selectedDate) }
 
     val rowsPerPage = 20
     var extraManualPages by remember(selectedDate) { mutableIntStateOf(0) }
@@ -70,6 +74,7 @@ fun DailyLedgerSheetScreen(
     val verticalScroll = rememberScrollState()
     val toolbarScroll = rememberScrollState()
     var showPeriodBookDialog by remember { mutableStateOf(false) }
+    var showCloseDayConfirmDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -81,10 +86,13 @@ fun DailyLedgerSheetScreen(
         DailyLedgerCompactToolbar(
             dayName = dayName,
             selectedDate = selectedDate,
+            displaySelectedDate = displaySelectedDate,
+            activeOpenSheetDate = activeOpenSheetDate,
             totalPages = totalPages,
             currentPageIndex = currentPageIndex,
             isLandscape = isLandscape,
             toolbarScroll = toolbarScroll,
+            onCloseDayClick = { showCloseDayConfirmDialog = true },
             onPrevDay = { viewModel.shiftSheetDate(-1) },
             onNextDay = { viewModel.shiftSheetDate(1) },
             onJumpToday = { viewModel.setSelectedSheetDate(it) },
@@ -120,7 +128,7 @@ fun DailyLedgerSheetScreen(
                             context = context,
                             pdfFile = pdf,
                             managerPhone = managerPhone,
-                            caption = "كشف حساب اليومية: $dayName $selectedDate م",
+                            caption = "كشف حساب اليومية: $dayName $displaySelectedDate م",
                             userName = ""
                         )
                     }
@@ -135,7 +143,7 @@ fun DailyLedgerSheetScreen(
                         )
                     }
                     if (pdf != null) {
-                        PdfAndBackupHelper.sharePdfFile(context, pdf, "كشف حساب $dayName $selectedDate")
+                        PdfAndBackupHelper.sharePdfFile(context, pdf, "كشف حساب $dayName $displaySelectedDate")
                     }
                 }
             },
@@ -148,7 +156,7 @@ fun DailyLedgerSheetScreen(
                         )
                     }
                     if (pdf != null) {
-                        PdfAndBackupHelper.printPdfFile(context, pdf, "Daily_Ledger_$selectedDate")
+                        PdfAndBackupHelper.printPdfFile(context, pdf, "Daily_Ledger_${selectedDate.replace("#", "_")}")
                     }
                 }
             }
@@ -172,6 +180,20 @@ fun DailyLedgerSheetScreen(
         )
     }
 
+    if (showCloseDayConfirmDialog) {
+        ConfirmActionDialog(
+            title = "🔒 تأكيد إغلاق اليوم وفتح سجل جديد",
+            message = "هل تريد إغلاق السجل الحالي ($dayName $displaySelectedDate — عدد الفواتير: ${dayInvoices.size}، الإجمالي بيد المستخدم: ${financialTotals.totalCashInUserHand.cleanNum()} $currency)؟\n\n• سيتم فتح سجل جديد صافي فوراً مع ترحيل المتبقي.\n• سيتم حفظ نسخة احتياطية إجبارية محلياً وتجهيزها للرفع التلقائي فور توفر الإنترنت.",
+            confirmText = "إغلاق اليوم",
+            cancelText = "تراجع",
+            isDanger = false,
+            onConfirm = {
+                viewModel.closeCurrentDaySheet(context, selectedDate)
+            },
+            onDismiss = { showCloseDayConfirmDialog = false }
+        )
+    }
+
     if (showPeriodBookDialog) {
         PeriodLedgerBookDialog(
             viewModel = viewModel,
@@ -188,10 +210,13 @@ fun DailyLedgerSheetScreen(
 private fun DailyLedgerCompactToolbar(
     dayName: String,
     selectedDate: String,
+    displaySelectedDate: String,
+    activeOpenSheetDate: String,
     totalPages: Int,
     currentPageIndex: Int,
     isLandscape: Boolean,
     toolbarScroll: ScrollState,
+    onCloseDayClick: () -> Unit,
     onPrevDay: () -> Unit,
     onNextDay: () -> Unit,
     onJumpToday: (String) -> Unit,
@@ -217,11 +242,20 @@ private fun DailyLedgerCompactToolbar(
             horizontalArrangement = Arrangement.spacedBy(5.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // أول زر من جهة اليمين: إغلاق اليوم وفتح سجل جديد صافي
+            ToolbarChip(
+                text = "🔒 إغلاق اليوم",
+                bgColor = Color(0xFFB91C1C),
+                textColor = Color.White,
+                testTag = "close_day_sheet_button",
+                onClick = onCloseDayClick
+            )
+
             ToolbarChip("▶ الأمس", Color(0xFFF1F5F9), Color(0xFF1E293B), onClick = onPrevDay)
 
             Surface(color = Color(0xFF141E2E), shape = RoundedCornerShape(6.dp)) {
                 Text(
-                    text = "كشف حساب: $dayName $selectedDate م",
+                    text = "كشف حساب: $dayName $displaySelectedDate م",
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
                     color = Color.White,
@@ -231,9 +265,8 @@ private fun DailyLedgerCompactToolbar(
                 )
             }
 
-            val todayStr = getCurrentDateTimeArabic().date
-            if (selectedDate != todayStr) {
-                ToolbarChip("اليوم", Color(0xFF10A36A), Color.White, onClick = { onJumpToday(todayStr) })
+            if (selectedDate != activeOpenSheetDate) {
+                ToolbarChip("اليوم", Color(0xFF10A36A), Color.White, onClick = { onJumpToday(activeOpenSheetDate) })
             }
 
             ToolbarChip("التالي ◀", Color(0xFFF1F5F9), Color(0xFF1E293B), onClick = onNextDay)
@@ -278,13 +311,16 @@ private fun ToolbarChip(
     text: String,
     bgColor: Color,
     textColor: Color,
+    testTag: String? = null,
     onClick: () -> Unit
 ) {
     Surface(
         color = bgColor,
         shape = RoundedCornerShape(6.dp),
         border = BorderStroke(0.5.dp, Color(0xFFCBD5E1)),
-        modifier = Modifier.clickable { onClick() }
+        modifier = Modifier
+            .then(if (testTag != null) Modifier.testTag(testTag) else Modifier)
+            .clickable { onClick() }
     ) {
         Text(
             text = text,

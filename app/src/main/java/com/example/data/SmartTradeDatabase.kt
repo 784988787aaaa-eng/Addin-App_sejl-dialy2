@@ -103,6 +103,12 @@ data class SupplyBatchEntity(
     val whatsappText: String
 )
 
+fun SaleInvoiceEntity.actualRecordDate(): String =
+    com.example.util.resolveActualTransactionDate(date, timestamp)
+
+fun SupplyBatchEntity.actualRecordDate(): String =
+    com.example.util.resolveActualTransactionDate(date, timestamp)
+
 data class FinancialSummaryTuple(
     val matchedCount: Int = 0,
     val totalInvoicesSubtotal: Double = 0.0,
@@ -365,6 +371,12 @@ interface SmartTradeDao {
 
     @Query("SELECT DISTINCT date FROM sales_invoices UNION SELECT DISTINCT date FROM supply_batches ORDER BY date DESC LIMIT 365")
     fun observeActiveDates(): Flow<List<String>>
+
+    @Query("SELECT DISTINCT date FROM sales_invoices UNION SELECT DISTINCT date FROM supply_batches ORDER BY date DESC LIMIT 365")
+    suspend fun getActiveDatesSync(): List<String>
+
+    @Query("SELECT (SELECT COUNT(*) FROM sales_invoices WHERE date = :date) + (SELECT COUNT(*) FROM supply_batches WHERE date = :date)")
+    suspend fun getSheetRecordsCountSync(date: String): Int
 
     @Query(
         """

@@ -76,7 +76,7 @@ object InvoicePdfGenerator {
 
             textPaint.textSize = 12f
             textPaint.color = AndroidColor.parseColor("#6EE7B7")
-            canvas.drawText("اليوم: ${invoice.dayName}   |   التاريخ: ${invoice.date} م   |   الوقت: ${invoice.time}", pageWidth / 2f, 80f, textPaint)
+            canvas.drawText("اليوم: ${invoice.dayName}   |   التاريخ: ${resolveActualTransactionDate(invoice.date, invoice.timestamp)} م   |   الوقت: ${invoice.time}", pageWidth / 2f, 80f, textPaint)
 
             bgPaint.color = AndroidColor.parseColor("#F8FAFC")
             canvas.drawRoundRect(RectF(24f, 112f, (pageWidth - 24).toFloat(), 156f), 10f, 10f, bgPaint)

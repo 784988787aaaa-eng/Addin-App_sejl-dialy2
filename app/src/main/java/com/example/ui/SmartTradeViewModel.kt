@@ -51,8 +51,21 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
     private val _activeTab = MutableStateFlow(0)
     val activeTab: StateFlow<Int> = _activeTab.asStateFlow()
 
-    private val _selectedSheetDate = MutableStateFlow(getCurrentDateTimeArabic().date)
+    private val _activeOpenSheetDate = MutableStateFlow(
+        prefs.getString("active_open_sheet_date", "")?.takeIf { it.isNotBlank() }
+            ?: getCurrentDateTimeArabic().date
+    )
+    val activeOpenSheetDate: StateFlow<String> = _activeOpenSheetDate.asStateFlow()
+
+    private val _selectedSheetDate = MutableStateFlow(_activeOpenSheetDate.value)
     val selectedSheetDate: StateFlow<String> = _selectedSheetDate.asStateFlow()
+
+    private val closedSheetsSet: MutableSet<String> = java.util.Collections.synchronizedSet(
+        prefs.getStringSet("closed_sheet_dates_set", emptySet())?.toMutableSet() ?: mutableSetOf()
+    )
+
+    private val _hasPendingCloudBackup = MutableStateFlow(prefs.getBoolean("pending_cloud_backup_upon_close", false))
+    val hasPendingCloudBackup: StateFlow<Boolean> = _hasPendingCloudBackup.asStateFlow()
 
     // استعلام مفهرس O(log N) لفواتير اليوم المحدد حصراً (دون سحب تواريخ أخرى للذاكرة)
     val sheetDayInvoices: StateFlow<List<SaleInvoiceEntity>> = _selectedSheetDate
@@ -195,7 +208,7 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
     private val _lastSavedInvoice = MutableStateFlow<SaleInvoiceEntity?>(null)
     val lastSavedInvoice: StateFlow<SaleInvoiceEntity?> = _lastSavedInvoice.asStateFlow()
 
-    private var trackedActiveDayDate: String = getCurrentDateTimeArabic().date
+    private var networkCallbackRegistered = false
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
@@ -213,49 +226,165 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
                 }
             } catch (_: Exception) {}
 
-            // التحقق عند فتح التطبيق مما إذا كان قد بدأ يوم جديد لتحديث التاريخ ورفع النسخة الاحتياطية لليوم المنتهي
-            val todayDate = getCurrentDateTimeArabic().date
-            val lastMidnightDate = prefs.getString("last_midnight_backup_date", "") ?: ""
-            if (lastMidnightDate.isNotBlank() && lastMidnightDate != todayDate) {
+            val storedOpen = prefs.getString("active_open_sheet_date", "") ?: ""
+            if (storedOpen.isBlank()) {
+                val todayDate = getCurrentDateTimeArabic().date
+                _activeOpenSheetDate.value = todayDate
                 _selectedSheetDate.value = todayDate
-                performSilentAutoBackup()
+                prefs.edit().putString("active_open_sheet_date", todayDate).apply()
+            } else {
+                onDayRolloverCheck(getCurrentDateTimeArabic().date)
             }
-            prefs.edit().putString("last_midnight_backup_date", todayDate).apply()
+
+            if (_hasPendingCloudBackup.value) {
+                trySyncPendingCloudBackupIfReady()
+            }
         }
-        startMidnightEndOfDayBackupScheduler()
+        registerNetworkReconnectCallbackForPendingBackup()
     }
 
     /**
-     * جدولة النسخ الاحتياطي اليومي التلقائي في نهاية اليوم الساعة 12:00 منتصف الليل تماماً
-     * مع بدء سجلات جديدة لليوم التالي ورفع النسخة الاحتياطية فوراً
+     * مراقب اتصال الشبكة الذكي: بمجرد توفر الإنترنت يرفع النسخة الاحتياطية الإجبارية التي تم تجهيزها عند «إغلاق اليوم»
      */
-    private fun startMidnightEndOfDayBackupScheduler() {
-        viewModelScope.launch(Dispatchers.IO) {
-            while (true) {
-                val nowCal = java.util.Calendar.getInstance()
-                val nextMidnight = (nowCal.clone() as java.util.Calendar).apply {
-                    add(java.util.Calendar.DAY_OF_YEAR, 1)
-                    set(java.util.Calendar.HOUR_OF_DAY, 0)
-                    set(java.util.Calendar.MINUTE, 0)
-                    set(java.util.Calendar.SECOND, 0)
-                    set(java.util.Calendar.MILLISECOND, 50)
+    private fun registerNetworkReconnectCallbackForPendingBackup() {
+        if (networkCallbackRegistered) return
+        try {
+            val cm = getApplication<Application>().getSystemService(Context.CONNECTIVITY_SERVICE) as? android.net.ConnectivityManager
+                ?: return
+            cm.registerDefaultNetworkCallback(object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    if (_hasPendingCloudBackup.value) {
+                        viewModelScope.launch(Dispatchers.IO) {
+                            trySyncPendingCloudBackupIfReady()
+                        }
+                    }
                 }
-                val millisToMidnight = (nextMidnight.timeInMillis - nowCal.timeInMillis).coerceAtLeast(1_000L)
-                delay(millisToMidnight)
-                val newDayDt = getCurrentDateTimeArabic()
-                onDayRolloverCheck(newDayDt.date)
+            })
+            networkCallbackRegistered = true
+        } catch (_: Throwable) {
+        }
+    }
+
+    /**
+     * لا يتم إغلاق السجل اليومي تلقائياً الساعة 12:00 منتصف الليل نهائياً.
+     * السجل الذي يحتوي على معاملات يظل مفتوحاً ومستمراً حتى يضغط المستخدم يدوياً على «إغلاق اليوم».
+     * فقط إذا كان السجل المفتوح فارغاً تماماً (0 معاملات) بعد إغلاق سجل سابق وحلّ يوم عمل جديد (7:00 صباحاً فأكثر أو يوم جديد بعد إغلاق)،
+     * يتم تحديث تاريخ السجل الفارغ ليحمل تاريخ اليوم الجديد.
+     */
+    fun onDayRolloverCheck(currentDate: String) {
+        if (currentDate.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            if (_hasPendingCloudBackup.value) {
+                trySyncPendingCloudBackupIfReady()
+            }
+            val currentOpen = _activeOpenSheetDate.value
+            val openBaseDate = extractBaseDateFromSheetKey(currentOpen)
+            if (currentDate > openBaseDate && !closedSheetsSet.contains(currentDate)) {
+                val recordsInOpenSheet = dao.getSheetRecordsCountSync(currentOpen)
+                val hourOfDay = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                val wasPreviousBaseClosed = closedSheetsSet.contains(openBaseDate) || currentOpen.contains("#")
+                // لا يتحول تاريخ السجل أبداً إذا كان بداخله أي فاتورة أو توريد؛ يتحول فقط إن كان سجلاً فارغاً تماماً بعد الإغلاق أو عند السابعة صباحاً
+                if (recordsInOpenSheet == 0 && (wasPreviousBaseClosed || hourOfDay >= 7)) {
+                    val wasViewingOpen = (_selectedSheetDate.value == currentOpen)
+                    _activeOpenSheetDate.value = currentDate
+                    if (wasViewingOpen) {
+                        _selectedSheetDate.value = currentDate
+                    }
+                    prefs.edit().putString("active_open_sheet_date", currentDate).apply()
+                }
             }
         }
     }
 
-    fun onDayRolloverCheck(currentDate: String) {
-        if (currentDate.isNotBlank() && currentDate != trackedActiveDayDate) {
-            trackedActiveDayDate = currentDate
-            _selectedSheetDate.value = currentDate
-            prefs.edit().putString("last_midnight_backup_date", currentDate).apply()
-            viewModelScope.launch(Dispatchers.IO) {
-                performSilentAutoBackup()
+    private suspend fun resolveActiveOpenSheetForNewTransaction(currentClockDate: String): String {
+        val currentOpen = _activeOpenSheetDate.value
+        val openBaseDate = extractBaseDateFromSheetKey(currentOpen)
+        if (currentClockDate > openBaseDate && !closedSheetsSet.contains(currentClockDate)) {
+            val recordsInOpenSheet = dao.getSheetRecordsCountSync(currentOpen)
+            val hourOfDay = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            val wasPreviousBaseClosed = closedSheetsSet.contains(openBaseDate) || currentOpen.contains("#")
+            if (recordsInOpenSheet == 0 && (wasPreviousBaseClosed || hourOfDay >= 7)) {
+                _activeOpenSheetDate.value = currentClockDate
+                prefs.edit().putString("active_open_sheet_date", currentClockDate).apply()
+                return currentClockDate
             }
+        }
+        return currentOpen
+    }
+
+    /**
+     * إغلاق السجل اليومي يدوياً وفتح سجل جديد صافي فوراً مع حفظ نسخة احتياطية إجبارية محلياً
+     * وتجهيزها للرفع السحابي الفوري أو التلقائي بمجرد الاتصال بالإنترنت
+     */
+    fun closeCurrentDaySheet(context: Context, sheetToClose: String = _activeOpenSheetDate.value) {
+        val targetClose = sheetToClose.trim().ifBlank { _activeOpenSheetDate.value }
+        val currentClockDate = getCurrentDateTimeArabic().date
+
+        viewModelScope.launch(Dispatchers.IO) {
+            val allDbDates = dao.getActiveDatesSync()
+            closedSheetsSet.add(targetClose)
+            closedSheetsSet.add(extractBaseDateFromSheetKey(targetClose))
+
+            val nextOpenSheet = computeNextOpenSheetKey(
+                closingSheetKey = targetClose,
+                currentClockDate = currentClockDate,
+                existingOrClosedSheetKeys = allDbDates + closedSheetsSet
+            )
+
+            _activeOpenSheetDate.value = nextOpenSheet
+            _selectedSheetDate.value = nextOpenSheet
+            prefs.edit()
+                .putString("active_open_sheet_date", nextOpenSheet)
+                .putStringSet("closed_sheet_dates_set", HashSet(closedSheetsSet))
+                .apply()
+
+            // حفظ نسخة احتياطية إجبارية فورية محلياً وتجهيزها للرفع السحابي
+            val json = buildFullBackupString()
+            val dt = getCurrentDateTimeArabic()
+            val timeStr = "${dt.dayName} ${dt.date} (${dt.time12h})"
+            PdfAndBackupHelper.saveAutoLocalBackup(getApplication(), json)
+            PdfAndBackupHelper.savePendingCloudBackup(getApplication(), json)
+            _lastAutoBackupTime.value = timeStr
+            _hasPendingCloudBackup.value = true
+            prefs.edit()
+                .putString("last_backup_time", timeStr)
+                .putBoolean("pending_cloud_backup_upon_close", true)
+                .apply()
+
+            val uploadedNow = trySyncPendingCloudBackupIfReady(explicitJson = json)
+            val closedDisp = formatSheetDateDisplay(targetClose)
+            val nextDisp = formatSheetDateDisplay(nextOpenSheet)
+
+            withContext(Dispatchers.Main) {
+                val msg = if (uploadedNow) {
+                    "تم إغلاق السجل ($closedDisp) وفتح سجل جديد صافي ($nextDisp) وحفظ النسخة محلياً وسحابياً ✓"
+                } else {
+                    "تم إغلاق السجل ($closedDisp) وفتح سجل جديد صافي ($nextDisp) ✓ (حُفظت النسخة محلياً وجاهزة للرفع التلقائي فور اتصال الإنترنت)"
+                }
+                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private suspend fun trySyncPendingCloudBackupIfReady(explicitJson: String? = null): Boolean {
+        val activeEmail = _connectedAccount.value
+        if (activeEmail.isBlank()) return false
+        return try {
+            val backupJson = explicitJson
+                ?: PdfAndBackupHelper.readPendingCloudBackup(getApplication())
+                ?: buildFullBackupString()
+            val res = GoogleDriveCloudBackupManager.uploadBackupToDrive(getApplication(), activeEmail, backupJson)
+            if (res is DriveCloudResult.Success) {
+                recordCloudBackupSuccess(res.data)
+                _hasPendingCloudBackup.value = false
+                prefs.edit().putBoolean("pending_cloud_backup_upon_close", false).apply()
+                PdfAndBackupHelper.clearPendingCloudBackup(getApplication())
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
         }
     }
 
@@ -283,7 +412,37 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
 
     fun setActiveTab(tab: Int) { _activeTab.value = tab }
     fun setSelectedSheetDate(date: String) { _selectedSheetDate.value = date }
-    fun shiftSheetDate(daysDelta: Int) { _selectedSheetDate.value = shiftDateString(_selectedSheetDate.value, daysDelta) }
+    fun jumpToActiveOpenSheet() { _selectedSheetDate.value = _activeOpenSheetDate.value }
+
+    fun shiftSheetDate(daysDelta: Int) {
+        val current = _selectedSheetDate.value
+        val knownSheets = (activeDates.value + listOf(_activeOpenSheetDate.value, current))
+            .filter { it.isNotBlank() }
+            .distinct()
+            .sorted()
+        val idx = knownSheets.indexOf(current)
+        val baseCurrent = extractBaseDateFromSheetKey(current)
+        if (daysDelta < 0 && idx > 0) {
+            val prevSheet = knownSheets[idx - 1]
+            if (extractBaseDateFromSheetKey(prevSheet) == baseCurrent || prevSheet == shiftDateString(baseCurrent, -1)) {
+                _selectedSheetDate.value = prevSheet
+                return
+            }
+        } else if (daysDelta > 0 && idx >= 0 && idx < knownSheets.lastIndex) {
+            val nextSheet = knownSheets[idx + 1]
+            if (extractBaseDateFromSheetKey(nextSheet) == baseCurrent || nextSheet == shiftDateString(baseCurrent, 1)) {
+                _selectedSheetDate.value = nextSheet
+                return
+            }
+        }
+        val shiftedBase = shiftDateString(baseCurrent, daysDelta)
+        val matchingSheets = knownSheets.filter { extractBaseDateFromSheetKey(it) == shiftedBase }
+        _selectedSheetDate.value = if (daysDelta < 0) {
+            matchingSheets.lastOrNull() ?: shiftedBase
+        } else {
+            matchingSheets.firstOrNull() ?: shiftedBase
+        }
+    }
 
     fun setCustomerNameInput(name: String) {
         _customerNameInput.value = name
@@ -716,6 +875,7 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         val invNote = _invoiceNoteInput.value.trim()
 
         viewModelScope.launch(Dispatchers.IO) {
+            val activeSheetForTx = resolveActiveOpenSheetForNewTransaction(dt.date)
             val invoiceEntity = db.withTransaction {
                 TradeRepositoryOperations.createAndPersistSaleInvoice(
                     dao = dao,
@@ -731,13 +891,14 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
                     remaining = acc.remainingOnInvoice,
                     currency = cur,
                     userName = uName,
-                    invoiceNote = invNote
+                    invoiceNote = invNote,
+                    ledgerSheetDate = activeSheetForTx
                 )
             }
             // فتح الواتساب أو المشاركة أو الحفظ المباشر فوراً دون انتظار النسخ الاحتياطي الخلفي
             withContext(Dispatchers.Main) {
                 _lastSavedInvoice.value = invoiceEntity
-                _selectedSheetDate.value = dt.date
+                _selectedSheetDate.value = activeSheetForTx
                 clearCartAndResetPos()
                 when (destination) {
                     InvoiceShareDestination.SAVE_ONLY -> {
@@ -784,11 +945,22 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         val uName = _userName.value
 
         viewModelScope.launch(Dispatchers.IO) {
+            val activeSheetForTx = resolveActiveOpenSheetForNewTransaction(dt.date)
             val batch = db.withTransaction {
-                TradeRepositoryOperations.createAndPersistSupplyBatch(dao, prod, batchNum, dt, cleanMaj, cleanMin, notes, uName)
+                TradeRepositoryOperations.createAndPersistSupplyBatch(
+                    dao = dao,
+                    prod = prod,
+                    batchNum = batchNum,
+                    dt = dt,
+                    majorQty = cleanMaj,
+                    cleanMin = cleanMin,
+                    notes = notes,
+                    userName = uName,
+                    ledgerSheetDate = activeSheetForTx
+                )
             }
             withContext(Dispatchers.Main) {
-                _selectedSheetDate.value = dt.date
+                _selectedSheetDate.value = activeSheetForTx
                 if (shareToWhatsApp) {
                     openWhatsAppDirectOrShare(context, batch.whatsappText, _managerPhone.value, uName)
                 } else {
@@ -876,10 +1048,18 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
             _salesCounter.value = validSalesStart
             _supplyCounter.value = validSupplyStart
             _lastSavedInvoice.value = null
-            _selectedSheetDate.value = getCurrentDateTimeArabic().date
+            val freshToday = getCurrentDateTimeArabic().date
+            closedSheetsSet.clear()
+            _activeOpenSheetDate.value = freshToday
+            _selectedSheetDate.value = freshToday
+            _hasPendingCloudBackup.value = false
+            PdfAndBackupHelper.clearPendingCloudBackup(getApplication())
             prefs.edit()
                 .putInt("sales_counter", validSalesStart)
                 .putInt("supply_counter", validSupplyStart)
+                .putString("active_open_sheet_date", freshToday)
+                .remove("closed_sheet_dates_set")
+                .putBoolean("pending_cloud_backup_upon_close", false)
                 .apply()
             withContext(Dispatchers.Main) {
                 clearCartAndResetPos()
@@ -992,11 +1172,16 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
             prefs.edit().putString("last_backup_time", timeStr).apply()
         }
         val activeEmail = _connectedAccount.value
-        if (_autoCloudSyncEnabled.value && activeEmail.isNotBlank()) {
+        if ((_autoCloudSyncEnabled.value || _hasPendingCloudBackup.value) && activeEmail.isNotBlank()) {
             try {
                 val res = GoogleDriveCloudBackupManager.uploadBackupToDrive(getApplication(), activeEmail, json)
                 if (res is DriveCloudResult.Success) {
                     recordCloudBackupSuccess(res.data)
+                    if (_hasPendingCloudBackup.value) {
+                        _hasPendingCloudBackup.value = false
+                        prefs.edit().putBoolean("pending_cloud_backup_upon_close", false).apply()
+                        PdfAndBackupHelper.clearPendingCloudBackup(getApplication())
+                    }
                 }
             } catch (_: Exception) {}
         }
@@ -1012,7 +1197,9 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
             supplyCounter = _supplyCounter.value,
             managerPhone = _managerPhone.value,
             connectedAccount = _connectedAccount.value,
-            userName = _userName.value
+            userName = _userName.value,
+            activeOpenSheetDate = _activeOpenSheetDate.value,
+            closedSheetDates = HashSet(closedSheetsSet)
         )
     }
 
@@ -1028,11 +1215,21 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
                 _supplyCounter.value = res.supplyCounter
                 _managerPhone.value = res.managerPhone
                 _userName.value = res.userName
+                if (res.closedSheetDates.isNotEmpty()) {
+                    closedSheetsSet.clear()
+                    closedSheetsSet.addAll(res.closedSheetDates)
+                }
+                if (res.activeOpenSheetDate.isNotBlank()) {
+                    _activeOpenSheetDate.value = res.activeOpenSheetDate
+                    _selectedSheetDate.value = res.activeOpenSheetDate
+                }
                 prefs.edit()
                     .putInt("sales_counter", res.salesCounter)
                     .putInt("supply_counter", res.supplyCounter)
                     .putString("manager_phone", res.managerPhone)
                     .putString("user_name", res.userName)
+                    .putString("active_open_sheet_date", _activeOpenSheetDate.value)
+                    .putStringSet("closed_sheet_dates_set", HashSet(closedSheetsSet))
                     .apply()
                 withContext(Dispatchers.Main) { Toast.makeText(context, "تمت استعادة النسخة الاحتياطية بنجاح ✓", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {

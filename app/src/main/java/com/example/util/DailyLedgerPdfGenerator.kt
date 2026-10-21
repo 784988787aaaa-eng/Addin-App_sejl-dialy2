@@ -105,10 +105,11 @@ object DailyLedgerPdfGenerator {
         endDate: String,
         ascendingOrder: Boolean = true
     ): PeriodLedgerBookPreview {
-        val cleanStart = minOf(startDate, endDate)
-        val cleanEnd = maxOf(startDate, endDate)
-        val activeDatesAsc = dao.getActiveDatesInRangeSync(cleanStart, cleanEnd)
-        val countsList = dao.getInvoiceCountsByDateInRangeSync(cleanStart, cleanEnd)
+        val cleanStart = extractBaseDateFromSheetKey(minOf(startDate, endDate))
+        val cleanEnd = extractBaseDateFromSheetKey(maxOf(startDate, endDate))
+        val cleanEndInclusive = "$cleanEnd~"
+        val activeDatesAsc = dao.getActiveDatesInRangeSync(cleanStart, cleanEndInclusive)
+        val countsList = dao.getInvoiceCountsByDateInRangeSync(cleanStart, cleanEndInclusive)
         val countMap = countsList.associate { it.date to it.invoiceCount }
 
         val orderedDates = if (ascendingOrder) activeDatesAsc else activeDatesAsc.asReversed()
@@ -178,7 +179,8 @@ object DailyLedgerPdfGenerator {
                 }
             }
 
-            val outFile = File(context.cacheDir, "Daily_Ledger_$dateStr.pdf")
+            val safeDateForFile = dateStr.replace("#", "_")
+            val outFile = File(context.cacheDir, "Daily_Ledger_$safeDateForFile.pdf")
             FileOutputStream(outFile).use { pdfDocument.writeTo(it) }
             outFile
         } catch (e: Exception) {
@@ -471,7 +473,8 @@ object DailyLedgerPdfGenerator {
         }
 
         // 3. المنتصف (نفس سطر العنوان): عنوان كشف حساب اليوم + لمسة فنية لترقيم ورقة اليوم عند تعدد صفحات اليوم
-        val mainTitleText = "السجل اليومي — كشف حساب: اليوم: $dayName   |   التاريخ: $dateStr م"
+        val displayDateStr = formatSheetDateDisplay(dateStr)
+        val mainTitleText = "السجل اليومي — كشف حساب: اليوم: $dayName   |   التاريخ: $displayDateStr م"
         textPaint.color = AndroidColor.parseColor("#0F172A")
         textPaint.textSize = if (isBookMode) 13.5f else 14.5f
         textPaint.textAlign = Paint.Align.CENTER

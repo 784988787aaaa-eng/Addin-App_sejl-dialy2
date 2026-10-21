@@ -223,13 +223,14 @@ fun UnifiedRecordsScreen(
                     }
                     items(activeDates, key = { it }) { dStr ->
                         val dName = getDayNameFromDateStr(dStr)
+                        val dDisp = formatSheetDateDisplay(dStr)
                         FilterChip(
                             selected = filterDate == dStr,
                             onClick = {
                                 filterDate = dStr
                                 pageLimit = 150
                             },
-                            label = { Text("$dName $dStr", fontSize = 9.sp, fontWeight = FontWeight.Bold) },
+                            label = { Text("$dName $dDisp", fontSize = 9.sp, fontWeight = FontWeight.Bold) },
                             modifier = Modifier.height(28.dp)
                         )
                     }
@@ -445,8 +446,9 @@ private fun InvoiceRecordCard(
                 Spacer(modifier = Modifier.width(4.dp))
 
                 Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(6.dp)) {
+                    val actualInvDate = resolveActualTransactionDate(inv.date, inv.timestamp)
                     Text(
-                        text = "${inv.dayName} | ${inv.date} | ${inv.time}",
+                        text = "${inv.dayName} | $actualInvDate | ${inv.time}",
                         color = Color(0xFF334155),
                         fontSize = 8.5.sp,
                         fontWeight = FontWeight.Bold,
