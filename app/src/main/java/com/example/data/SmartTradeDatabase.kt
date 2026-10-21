@@ -132,6 +132,17 @@ data class SupplyAggregatedStockProjection(
     val suppliedAfterDate: Double
 )
 
+data class DateInvoiceCountProjection(
+    val date: String,
+    val invoiceCount: Int
+)
+
+data class DateProductSupplyProjection(
+    val date: String,
+    val productKey: String,
+    val totalSupplied: Double
+)
+
 @Dao
 interface SmartTradeDao {
     @Query("SELECT * FROM products ORDER BY sortOrder ASC")
@@ -191,11 +202,27 @@ interface SmartTradeDao {
     @Query("SELECT * FROM sales_invoices WHERE date = :date ORDER BY timestamp ASC")
     fun observeSalesInvoicesByDate(date: String): Flow<List<SaleInvoiceEntity>>
 
+    @Query("SELECT * FROM sales_invoices WHERE date = :date ORDER BY timestamp ASC")
+    suspend fun getSalesInvoicesByDateSync(date: String): List<SaleInvoiceEntity>
+
     @Query("SELECT * FROM sales_invoices WHERE date >= :date ORDER BY timestamp ASC")
     fun observeSalesInvoicesOnOrAfterDate(date: String): Flow<List<SaleInvoiceEntity>>
 
     @Query("SELECT date, itemsJson FROM sales_invoices WHERE date >= :date")
     fun observeInvoiceItemsFromDateOnwards(date: String): Flow<List<InvoiceDateItemsProjection>>
+
+    @Query("SELECT date, itemsJson FROM sales_invoices WHERE date >= :startDate")
+    suspend fun getInvoiceItemsFromDateOnwardsSync(startDate: String): List<InvoiceDateItemsProjection>
+
+    @Query(
+        """
+        SELECT date, COUNT(*) AS invoiceCount
+        FROM sales_invoices
+        WHERE date >= :startDate AND date <= :endDate
+        GROUP BY date
+        """
+    )
+    suspend fun getInvoiceCountsByDateInRangeSync(startDate: String, endDate: String): List<DateInvoiceCountProjection>
 
     @Query(
         """
@@ -267,6 +294,19 @@ interface SmartTradeDao {
     )
     fun observeAggregatedSupplyStockFromDateOnwards(date: String): Flow<List<SupplyAggregatedStockProjection>>
 
+    @Query(
+        """
+        SELECT 
+            date,
+            productKey,
+            COALESCE(SUM(addedMajorEquivalent), 0.0) AS totalSupplied
+        FROM supply_batches
+        WHERE date >= :startDate
+        GROUP BY date, productKey
+        """
+    )
+    suspend fun getAggregatedSuppliesByDateFromDateOnwardsSync(startDate: String): List<DateProductSupplyProjection>
+
     @Query("SELECT * FROM supply_batches ORDER BY timestamp DESC")
     suspend fun getAllSupplies(): List<SupplyBatchEntity>
 
@@ -287,6 +327,17 @@ interface SmartTradeDao {
 
     @Query("SELECT DISTINCT date FROM sales_invoices UNION SELECT DISTINCT date FROM supply_batches ORDER BY date DESC LIMIT 365")
     fun observeActiveDates(): Flow<List<String>>
+
+    @Query(
+        """
+        SELECT DISTINCT date FROM (
+            SELECT date FROM sales_invoices WHERE date >= :startDate AND date <= :endDate
+            UNION
+            SELECT date FROM supply_batches WHERE date >= :startDate AND date <= :endDate
+        ) ORDER BY date ASC
+        """
+    )
+    suspend fun getActiveDatesInRangeSync(startDate: String, endDate: String): List<String>
 }
 
 @Database(

@@ -178,8 +178,8 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
     private val _paidInput = MutableStateFlow("")
     val paidInput: StateFlow<String> = _paidInput.asStateFlow()
 
-    // 0 = نقد كامل | 1 = مسلم جزء / آجل | 2 = سداد دين سابق
-    private val _selectedPaymentOption = MutableStateFlow(1)
+    // 0 = نقد كامل (الخيار المفعل الافتراضي) | 1 = مسلم جزء / آجل | 2 = سداد دين سابق
+    private val _selectedPaymentOption = MutableStateFlow(0)
     val selectedPaymentOption: StateFlow<Int> = _selectedPaymentOption.asStateFlow()
 
     // رسالة التنبيه المدمجة تحت حقل الكمية أو السعر (لعدم توفر المخزون أو نقص السعر)
@@ -581,7 +581,7 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
         _minorQtyInput.value = ""
         _previousDebtInput.value = ""
         _isPrevDebtPaidModel.value = false
-        _selectedPaymentOption.value = 1
+        _selectedPaymentOption.value = 0
         _discountInput.value = ""
         _paidInput.value = ""
         _entryValidationAlert.value = null
@@ -648,10 +648,17 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
             }
         }
 
+        val rawItemsTotal = CartCalculatorHelper.sumCartTotals(currentCart)
+        val effectivePaid = if (_selectedPaymentOption.value == 0) {
+            LedgerCalculator.roundMoney((rawItemsTotal - discount).coerceAtLeast(0.0))
+        } else {
+            paid
+        }
+
         val acc = LedgerCalculator.computeUnifiedInvoiceAccounting(
-            rawItemsTotal = CartCalculatorHelper.sumCartTotals(currentCart),
+            rawItemsTotal = rawItemsTotal,
             discount = discount,
-            paidCash = paid,
+            paidCash = effectivePaid,
             previousDebtPaid = prevDebt
         )
 
@@ -987,5 +994,31 @@ class SmartTradeViewModel(application: Application) : AndroidViewModel(applicati
                 withContext(Dispatchers.Main) { Toast.makeText(context, "ملف النسخة الاحتياطية غير صالح", Toast.LENGTH_SHORT).show() }
             }
         }
+    }
+
+    suspend fun computePeriodBookPreview(
+        startDate: String,
+        endDate: String,
+        ascendingOrder: Boolean = true
+    ): PeriodLedgerBookPreview = withContext(Dispatchers.IO) {
+        PdfAndBackupHelper.computePeriodBookPreview(dao, startDate, endDate, ascendingOrder)
+    }
+
+    suspend fun generatePeriodLedgerBookPdf(
+        context: Context,
+        startDate: String,
+        endDate: String,
+        ascendingOrder: Boolean = true,
+        onProgress: suspend (PeriodLedgerBookProgress) -> Unit = {}
+    ): java.io.File? = withContext(Dispatchers.IO) {
+        PdfAndBackupHelper.generatePeriodLedgerBookPdfFile(
+            context = context,
+            dao = dao,
+            startDate = startDate,
+            endDate = endDate,
+            ascendingOrder = ascendingOrder,
+            userName = _userName.value,
+            onProgress = onProgress
+        )
     }
 }

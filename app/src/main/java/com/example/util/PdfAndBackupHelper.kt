@@ -7,6 +7,7 @@ import androidx.core.content.FileProvider
 import com.example.data.CustomerEntity
 import com.example.data.ProductEntity
 import com.example.data.SaleInvoiceEntity
+import com.example.data.SmartTradeDao
 import com.example.data.SupplyBatchEntity
 import com.example.domain.ProductDailyStockStats
 import org.json.JSONArray
@@ -35,6 +36,27 @@ object PdfAndBackupHelper {
         userName: String = ""
     ): File? = DailyLedgerPdfGenerator.generateDailySheetPdfFile(
         context, dateStr, dayName, products, dayInvoices, stockStats, userName
+    )
+
+    suspend fun computePeriodBookPreview(
+        dao: SmartTradeDao,
+        startDate: String,
+        endDate: String,
+        ascendingOrder: Boolean = true
+    ): PeriodLedgerBookPreview = DailyLedgerPdfGenerator.computePeriodBookPreview(
+        dao, startDate, endDate, ascendingOrder
+    )
+
+    suspend fun generatePeriodLedgerBookPdfFile(
+        context: Context,
+        dao: SmartTradeDao,
+        startDate: String,
+        endDate: String,
+        ascendingOrder: Boolean = true,
+        userName: String = "",
+        onProgress: suspend (PeriodLedgerBookProgress) -> Unit = {}
+    ): File? = DailyLedgerPdfGenerator.generatePeriodLedgerBookPdfFile(
+        context, dao, startDate, endDate, ascendingOrder, userName, onProgress
     )
 
     fun sharePdfFile(context: Context, pdfFile: File, title: String) =

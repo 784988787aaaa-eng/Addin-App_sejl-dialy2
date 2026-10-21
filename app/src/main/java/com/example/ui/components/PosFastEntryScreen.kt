@@ -91,12 +91,18 @@ fun PosFastEntryScreen(
         )
     }
 
-    val invoiceAccounting = remember(effectiveItems, discountInput, paidInput, previousDebtInput) {
+    val invoiceAccounting = remember(effectiveItems, discountInput, paidInput, previousDebtInput, selectedPaymentOption) {
         val rawItemsSum = CartCalculatorHelper.sumCartTotals(effectiveItems)
+        val discountVal = discountInput.toDoubleOrNull() ?: 0.0
+        val effectivePaidCash = if (selectedPaymentOption == 0) {
+            LedgerCalculator.roundMoney((rawItemsSum - discountVal).coerceAtLeast(0.0))
+        } else {
+            paidInput.toDoubleOrNull() ?: 0.0
+        }
         LedgerCalculator.computeUnifiedInvoiceAccounting(
             rawItemsTotal = rawItemsSum,
-            discount = discountInput.toDoubleOrNull() ?: 0.0,
-            paidCash = paidInput.toDoubleOrNull() ?: 0.0,
+            discount = discountVal,
+            paidCash = effectivePaidCash,
             previousDebtPaid = previousDebtInput.toDoubleOrNull() ?: 0.0
         )
     }

@@ -536,6 +536,9 @@ fun PosFinancialEntryAndPreviewCard(
                     },
                     placeholder = "أدخل المبلغ المسلّم نقداً...",
                     onOpenCalc = {
+                        if (selectedPaymentOption == 0) {
+                            viewModel.selectPaymentMethod(1, netInvoiceSubtotal)
+                        }
                         onOpenCalculator(CalculatorTarget.PAID)
                     },
                     onImeDone = { focusManager.clearFocus() },

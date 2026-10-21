@@ -69,6 +69,7 @@ fun DailyLedgerSheetScreen(
     val horizontalScroll = rememberScrollState()
     val verticalScroll = rememberScrollState()
     val toolbarScroll = rememberScrollState()
+    var showPeriodBookDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -100,6 +101,7 @@ fun DailyLedgerSheetScreen(
                     ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                 }
             },
+            onOpenPeriodBookDialog = { showPeriodBookDialog = true },
             onSharePrintedLedgerToManager = {
                 scope.launch {
                     val pdf = withContext(Dispatchers.IO) {
@@ -169,6 +171,17 @@ fun DailyLedgerSheetScreen(
             }
         )
     }
+
+    if (showPeriodBookDialog) {
+        PeriodLedgerBookDialog(
+            viewModel = viewModel,
+            activeDates = activeDates,
+            initialSelectedDate = selectedDate,
+            managerPhone = managerPhone,
+            userName = userName,
+            onDismiss = { showPeriodBookDialog = false }
+        )
+    }
 }
 
 @Composable
@@ -185,6 +198,7 @@ private fun DailyLedgerCompactToolbar(
     onSelectPage: (Int) -> Unit,
     onAddPage: () -> Unit,
     onToggleLandscape: () -> Unit,
+    onOpenPeriodBookDialog: () -> Unit,
     onSharePrintedLedgerToManager: () -> Unit,
     onSharePdf: () -> Unit,
     onPrintPdf: () -> Unit
@@ -235,6 +249,12 @@ private fun DailyLedgerCompactToolbar(
             }
 
             ToolbarChip("+ صفحة", Color(0xFFECFDF5), Color(0xFF047857), onClick = onAddPage)
+            ToolbarChip(
+                text = "📚 كتاب السجلات (فترة / شهر) PDF",
+                bgColor = Color(0xFF312E81),
+                textColor = Color.White,
+                onClick = onOpenPeriodBookDialog
+            )
             ToolbarChip(
                 text = if (isLandscape) "🔄 عمودي" else "🔄 أفقي",
                 bgColor = if (isLandscape) Color(0xFF065F46) else Color(0xFF1E293B),

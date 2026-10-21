@@ -1,5 +1,6 @@
 package com.example.domain
 
+import com.example.data.DateProductSupplyProjection
 import com.example.data.FinancialSummaryTuple
 import com.example.data.InvoiceDateItemsProjection
 import com.example.data.ProductEntity
@@ -484,6 +485,101 @@ object LedgerCalculator {
         val invProjections = invoicesFromDateOnwards.map { InvoiceDateItemsProjection(it.date, it.itemsJson) }
         val supProjections = suppliesFromDateOnwards.map { SupplyStockProjection(it.productKey, it.date, it.addedMajorEquivalent) }
         return computeDailyStockStatsFromProjections(targetDate, products, invProjections, supProjections)
+    }
+
+    /**
+     * حساب إحصائيات المخزون اليومية لمجموعة أيام (فترة / أسبوع / شهر / عام كامل) في تمريرة واحدة فائقة السرعة O(N + D*P)
+     * يضمن تطابق ترحيل الأرصدة بين الأيام المتتالية بدقة 100% دون تكرار مسح قاعدة البيانات لكل يوم
+     */
+    fun computeMultiDayStockStatsMap(
+        targetDates: List<String>,
+        products: List<ProductEntity>,
+        invoiceProjectionsFromMinDateOnwards: List<InvoiceDateItemsProjection>,
+        supplyProjectionsByDateFromMinDateOnwards: List<DateProductSupplyProjection>
+    ): Map<String, Map<String, ProductDailyStockStats>> {
+        if (targetDates.isEmpty() || products.isEmpty()) return emptyMap()
+        val minDate = targetDates.minOrNull() ?: return emptyMap()
+        val targetDateSet = targetDates.toHashSet()
+        val productMap = products.associateBy { it.key }
+
+        val allDatesSet = HashSet<String>(targetDates.size * 2)
+        allDatesSet.addAll(targetDates)
+
+        val suppliedByDateProduct = HashMap<String, MutableMap<String, Double>>()
+        for (sup in supplyProjectionsByDateFromMinDateOnwards) {
+            if (sup.date < minDate) continue
+            allDatesSet.add(sup.date)
+            val dayMap = suppliedByDateProduct.getOrPut(sup.date) { HashMap() }
+            dayMap[sup.productKey] = addStock(dayMap[sup.productKey] ?: 0.0, sup.totalSupplied)
+        }
+
+        val soldByDateProduct = HashMap<String, MutableMap<String, Double>>()
+        for (inv in invoiceProjectionsFromMinDateOnwards) {
+            if (inv.date < minDate) continue
+            allDatesSet.add(inv.date)
+            val items = decodeInvoiceItemsJson(inv.itemsJson)
+            if (items.isEmpty()) continue
+            val dayMap = soldByDateProduct.getOrPut(inv.date) { HashMap() }
+            for (item in items) {
+                val p = productMap[item.key] ?: continue
+                val factor = if (p.factor > 0.0) p.factor else 2.0
+                val hasMinor = p.minorUnit.isNotBlank() && factor > 0.0
+                val soldEq = computeMajorEquivalent(item.majorQty, item.minorQty, factor, hasMinor)
+                if (soldEq > 0.0) {
+                    dayMap[item.key] = addStock(dayMap[item.key] ?: 0.0, soldEq)
+                }
+            }
+        }
+
+        val datesDescending = allDatesSet.sortedDescending()
+        val runningSuppliesAfter = HashMap<String, Double>(products.size * 2)
+        val runningSalesAfter = HashMap<String, Double>(products.size * 2)
+        val resultByDate = HashMap<String, Map<String, ProductDailyStockStats>>(targetDates.size * 2)
+
+        for (d in datesDescending) {
+            val daySupMap = suppliedByDateProduct[d]
+            val daySoldMap = soldByDateProduct[d]
+
+            if (targetDateSet.contains(d)) {
+                val dayStats = LinkedHashMap<String, ProductDailyStockStats>(products.size)
+                for (p in products) {
+                    val suppliedOnDate = roundStock(daySupMap?.get(p.key) ?: 0.0)
+                    val soldOnDate = roundStock(daySoldMap?.get(p.key) ?: 0.0)
+                    val suppliesAfterDate = roundStock(runningSuppliesAfter[p.key] ?: 0.0)
+                    val salesAfterDate = roundStock(runningSalesAfter[p.key] ?: 0.0)
+
+                    val endOfDayRem = addStock(subtractStock(p.stock, suppliesAfterDate), salesAfterDate)
+                    val prevDayRem = addStock(subtractStock(endOfDayRem, suppliedOnDate), soldOnDate)
+
+                    dayStats[p.key] = ProductDailyStockStats(
+                        productKey = p.key,
+                        productName = p.name,
+                        suppliedToday = suppliedOnDate,
+                        prevDayRemaining = prevDayRem,
+                        soldToday = soldOnDate,
+                        endOfDayRemaining = endOfDayRem,
+                        suppliedDisplay = if (suppliedOnDate > 0.0001) formatStockMajorMinorArabic(suppliedOnDate, p) else "",
+                        prevRemainingDisplay = if (abs(prevDayRem) > 0.0005) formatStockMajorMinorArabic(prevDayRem, p) else "",
+                        soldDisplay = if (soldOnDate > 0.0001) formatStockMajorMinorArabic(soldOnDate, p) else "",
+                        endRemainingDisplay = if (abs(endOfDayRem) > 0.0005) formatStockMajorMinorArabic(endOfDayRem, p) else "0 ${p.majorUnit}"
+                    )
+                }
+                resultByDate[d] = dayStats
+            }
+
+            for (p in products) {
+                val suppliedOnDate = daySupMap?.get(p.key) ?: 0.0
+                val soldOnDate = daySoldMap?.get(p.key) ?: 0.0
+                if (suppliedOnDate != 0.0) {
+                    runningSuppliesAfter[p.key] = addStock(runningSuppliesAfter[p.key] ?: 0.0, suppliedOnDate)
+                }
+                if (soldOnDate != 0.0) {
+                    runningSalesAfter[p.key] = addStock(runningSalesAfter[p.key] ?: 0.0, soldOnDate)
+                }
+            }
+        }
+
+        return resultByDate
     }
 
     /**

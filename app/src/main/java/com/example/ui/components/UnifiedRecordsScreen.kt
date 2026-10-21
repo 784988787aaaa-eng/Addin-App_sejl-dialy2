@@ -78,6 +78,7 @@ fun UnifiedRecordsScreen(
     var pendingDeleteInvoice by remember { mutableStateOf<SaleInvoiceEntity?>(null) }
     var pendingEditInvoice by remember { mutableStateOf<SaleInvoiceEntity?>(null) }
     var pendingEditCustomerContact by remember { mutableStateOf<Pair<SaleInvoiceEntity, String>?>(null) }
+    var showPeriodBookDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -115,17 +116,47 @@ fun UnifiedRecordsScreen(
                 modifier = Modifier.padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = {
-                        searchQuery = it
-                        pageLimit = 150
-                    },
-                    placeholder = { Text("ابحث باسم العميل، رقم الفاتورة، اليوم، أو التاريخ...", fontSize = 10.5.sp) },
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = {
+                            searchQuery = it
+                            pageLimit = 150
+                        },
+                        placeholder = { Text("ابحث باسم العميل، رقم الفاتورة، اليوم، أو التاريخ...", fontSize = 10.5.sp) },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Button(
+                        onClick = { showPeriodBookDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF312E81)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier.height(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PictureAsPdf,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "📚 كتاب السجلات PDF",
+                            color = Color.White,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Black,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                }
 
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(5.dp)) {
                     item {
@@ -220,6 +251,17 @@ fun UnifiedRecordsScreen(
                 }
             }
         }
+    }
+
+    if (showPeriodBookDialog) {
+        PeriodLedgerBookDialog(
+            viewModel = viewModel,
+            activeDates = activeDates,
+            initialSelectedDate = filterDate.ifBlank { activeDates.firstOrNull().orEmpty() },
+            managerPhone = managerPhone,
+            userName = userName,
+            onDismiss = { showPeriodBookDialog = false }
+        )
     }
 
     pendingDeleteInvoice?.let { inv ->

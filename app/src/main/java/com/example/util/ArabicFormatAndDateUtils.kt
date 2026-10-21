@@ -119,6 +119,38 @@ fun shiftDateString(dateStr: String, daysDelta: Int): String {
     }
 }
 
+fun getArabicMonthName(monthOneBased: Int): String = when (monthOneBased) {
+    1 -> "يناير"
+    2 -> "فبراير"
+    3 -> "مارس"
+    4 -> "أبريل"
+    5 -> "مايو"
+    6 -> "يونيو"
+    7 -> "يوليو"
+    8 -> "أغسطس"
+    9 -> "سبتمبر"
+    10 -> "أكتوبر"
+    11 -> "نوفمبر"
+    12 -> "ديسمبر"
+    else -> "شهر $monthOneBased"
+}
+
+/**
+ * إرجاع (تاريخ البداية YYYY-MM-01 ، تاريخ النهاية YYYY-MM-lastDay) لأي سنة وشهر (1..12)
+ */
+fun getMonthDateRange(year: Int, monthOneBased: Int): Pair<String, String> {
+    val cleanMonth = monthOneBased.coerceIn(1, 12)
+    val cal = Calendar.getInstance().apply {
+        set(Calendar.YEAR, year)
+        set(Calendar.MONTH, cleanMonth - 1)
+        set(Calendar.DAY_OF_MONTH, 1)
+    }
+    val maxDay = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+    val startStr = String.format(Locale.US, "%04d-%02d-01", year, cleanMonth)
+    val endStr = String.format(Locale.US, "%04d-%02d-%02d", year, cleanMonth, maxDay)
+    return startStr to endStr
+}
+
 fun formatQtyWithUnitArabic(qty: Double, unitName: String): String {
     val cleanU = unitName.trim()
     val qStr = qty.cleanNum()

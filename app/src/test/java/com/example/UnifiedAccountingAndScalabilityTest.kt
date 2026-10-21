@@ -231,4 +231,62 @@ class UnifiedAccountingAndScalabilityTest {
         assertEquals(15000.0, summary.totalCashInUserHand, 0.0001)
         assertEquals(50_000, summary.matchedInvoicesCount)
     }
+
+    @Test
+    fun `test multi day ledger book stock stats continuity across period`() {
+        val currentProduct = ProductEntity(
+            key = "khadra",
+            name = "خضرة",
+            majorUnit = "كيلو",
+            minorUnit = "",
+            factor = 2.0,
+            colorBgHex = 0xFFDCFCE7,
+            colorTextHex = 0xFF15803D,
+            borderHex = 0xFF86EFAC,
+            price = 5000.0,
+            stock = 20.0
+        )
+        val dates = listOf("2026-10-19", "2026-10-20", "2026-10-21")
+        val supplies = listOf(
+            com.example.data.DateProductSupplyProjection("2026-10-19", "khadra", 10.0),
+            com.example.data.DateProductSupplyProjection("2026-10-20", "khadra", 5.0),
+            com.example.data.DateProductSupplyProjection("2026-10-21", "khadra", 8.0)
+        )
+        val invoices = listOf(
+            InvoiceDateItemsProjection(
+                date = "2026-10-19",
+                itemsJson = encodeInvoiceItemsJson(
+                    listOf(InvoiceItemRecord("khadra", "خضرة", "4 كيلو", 4.0, 0.0, 5000.0, 20000.0))
+                )
+            ),
+            InvoiceDateItemsProjection(
+                date = "2026-10-20",
+                itemsJson = encodeInvoiceItemsJson(
+                    listOf(InvoiceItemRecord("khadra", "خضرة", "3 كيلو", 3.0, 0.0, 5000.0, 15000.0))
+                )
+            ),
+            InvoiceDateItemsProjection(
+                date = "2026-10-21",
+                itemsJson = encodeInvoiceItemsJson(
+                    listOf(InvoiceItemRecord("khadra", "خضرة", "6 كيلو", 6.0, 0.0, 5000.0, 30000.0))
+                )
+            )
+        )
+
+        val multiStats = LedgerCalculator.computeMultiDayStockStatsMap(
+            targetDates = dates,
+            products = listOf(currentProduct),
+            invoiceProjectionsFromMinDateOnwards = invoices,
+            supplyProjectionsByDateFromMinDateOnwards = supplies
+        )
+
+        val d1 = multiStats["2026-10-19"]!!["khadra"]!!
+        val d2 = multiStats["2026-10-20"]!!["khadra"]!!
+        val d3 = multiStats["2026-10-21"]!!["khadra"]!!
+
+        // متبقي نهاية كل يوم ينتقل بدقة 100% كـ (إجمالي المتبقي السابق) لليوم التالي في الكتاب
+        assertEquals(d1.endOfDayRemaining, d2.prevDayRemaining, 0.0001)
+        assertEquals(d2.endOfDayRemaining, d3.prevDayRemaining, 0.0001)
+        assertEquals(20.0, d3.endOfDayRemaining, 0.0001)
+    }
 }
